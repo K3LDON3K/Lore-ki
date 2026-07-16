@@ -5143,7 +5143,7 @@ async function invZonePane() {
   for (const it of items) area.appendChild(invTokenEl(it, 44));
   el.querySelector('[data-k=close]').onclick = () => { invUI.zoneOpen = null; invUI.paneMode = null; closeRefPane(); renderInventoryTabsMark(); };
   const sp = el.querySelector('[data-k=spawn]');
-  if (sp) sp.onclick = () => invSpawnDialog(cid, zId, () => invZonePane());
+  if (sp) sp.onclick = () => invSpawnDialog(cid, zId, () => invRefresh());
   const zd = el.querySelector('[data-k=zdel]');
   if (zd) zd.onclick = async () => {
     const n = (invUI.zoneItems || []).length;
@@ -5407,7 +5407,21 @@ function invNewSlotDialog(_unused, edit = null, onCreated = null) {
 }
 
 /** Překreslí tělo i otevřený panel zóny. */
-function invRefresh() { invDrawBody(); if (invUI.zoneOpen) invZonePane(); }
+function invRefresh() { invDrawBody(); if (invUI.zoneOpen) invZonePane(); invRefreshZoneCounts(); }
+
+/** Počty u tlačítek zón v liště — bez plného překreslení stránky. */
+async function invRefreshZoneCounts() {
+  if (!state.campaign) return;
+  let zones;
+  try { zones = await api(`/api/campaigns/${state.campaign.id}/inv/zones`); } catch { return; }
+  invUI.zones = zones;
+  zones.forEach(z => {
+    const btn = document.querySelector(`[data-zonebtn="${z.id}"]`);
+    if (!btn) return;
+    const c = btn.querySelector('.count');
+    if (c) c.textContent = z.count;
+  });
+}
 /** SSE zpráva o změně inventáře → překreslit, pokud je stránka otevřená. */
 let invPushTimer = null;
 function invOnPush() {
