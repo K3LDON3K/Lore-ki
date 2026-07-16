@@ -1881,7 +1881,7 @@ async function renderAdmin() {
 
       <div class="card">
         <h3>🗺️ Kampaně (${ov.campaigns.length})</h3>
-        <div style="margin:8px 0"><label>Obnovit ze zálohy (vytvoří novou kampaň)</label>
+        <div style="margin:8px 0"><label>Obnovit ze zálohy (nová kampaň, nebo přepis existující)</label>
           <input type="file" id="aRestore" accept="application/json,.json" style="width:auto"></div>
         ${ov.campaigns.length === 0 ? '<p class="muted">Žádné kampaně.</p>' : ''}
         ${ov.campaigns.map(c => `
@@ -1933,9 +1933,56 @@ async function renderAdmin() {
   });
   $app.querySelector('#aRestore').onchange = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    if (!await confirmDialog('Ze zálohy se vytvoří nová kampaň. Stávající kampaně zůstanou nedotčené.', { title: 'Obnovit zálohu', icon: '♻️', ok: 'Obnovit' })) { e.target.value = ''; return; }
+    e.target.value = '';
+    const choice = await new Promise(resolve => {
+      const overlay = h(`<div class="modal-overlay"><div class="modal confirm-modal" role="dialog" aria-modal="true">
+        <div class="confirm-head"><span class="confirm-icon">♻️</span><h3>Obnovit zálohu</h3></div>
+        <div class="confirm-msg">Soubor: <b>${esc(file.name)}</b></div>
+        <label class="restore-opt on"><input type="radio" name="rmode" value="new" checked hidden>
+          <b>🆕 Vytvořit novou kampaň</b>
+          <input data-k="rname" placeholder="Název nové kampaně" style="margin-top:6px">
+        </label>
+        <label class="restore-opt"><input type="radio" name="rmode" value="overwrite" hidden>
+          <b>♻️ Přepsat existující kampaň</b>
+          <span class="muted" style="display:block; font-size:12px">Veškerý dosavadní obsah kampaně bude NENÁVRATNĚ nahrazen zálohou. Hráči a jejich přístup zůstanou.</span>
+          <select data-k="rtarget" style="margin-top:6px">${ov.campaigns.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+        </label>
+        <div class="confirm-actions">
+          <button class="secondary" data-k="no">Zrušit</button>
+          <button data-k="yes">Obnovit</button>
+        </div>
+      </div></div>`).firstElementChild;
+      document.body.appendChild(overlay);
+      const sync = () => overlay.querySelectorAll('.restore-opt').forEach(l => l.classList.toggle('on', l.querySelector('input[type=radio]').checked));
+      overlay.querySelectorAll('input[type=radio]').forEach(r => r.onchange = sync);
+      overlay.querySelectorAll('.restore-opt').forEach(l => l.onclick = ev => { if (ev.target.tagName !== 'INPUT' && ev.target.tagName !== 'SELECT') { l.querySelector('input[type=radio]').checked = true; sync(); } });
+      const done = v => { overlay.remove(); resolve(v); };
+      overlay.onclick = ev => { if (ev.target === overlay) done(null); };
+      overlay.querySelector('[data-k=no]').onclick = () => done(null);
+      overlay.querySelector('[data-k=yes]').onclick = () => {
+        const mode = overlay.querySelector('input[name=rmode]:checked').value;
+        if (mode === 'new') {
+          const name = overlay.querySelector('[data-k=rname]').value.trim();
+          if (!name) return invToast('Zadejte název nové kampaně.');
+          done({ mode, name });
+        } else {
+          const target = +overlay.querySelector('[data-k=rtarget]').value;
+          if (!target) return invToast('Vyberte kampaň k přepsání.');
+          done({ mode, target });
+        }
+      };
+      setTimeout(() => overlay.querySelector('[data-k=rname]').focus(), 10);
+    });
+    if (!choice) return;
+    if (choice.mode === 'overwrite') {
+      const cname = (ov.campaigns.find(c => c.id === choice.target) || {}).name || '?';
+      if (!await confirmDialog(`Obsah kampaně „${cname}“ bude NENÁVRATNĚ nahrazen zálohou.\nDoporučujeme si nejdřív stáhnout její aktuální zálohu.`, { title: 'Přepsat kampaň', ok: 'Nenávratně přepsat', danger: true })) return;
+    }
     try {
-      const res = await fetch('/api/admin/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
+      const qs = choice.mode === 'new'
+        ? `?mode=new&name=${encodeURIComponent(choice.name)}`
+        : `?mode=overwrite&target=${choice.target}`;
+      const res = await fetch('/api/admin/import' + qs, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || 'Chyba');
       alert(`Obnoveno jako „${d.name}“.`); renderAdmin();

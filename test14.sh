@@ -65,6 +65,26 @@ OV2=$(req a1.jar GET /api/admin/overview)
 COUNT=$(jv "$OV2" "len([c for c in d['campaigns'] if 'AdmKamp' in c['name']])")
 [ "$COUNT" = "2" ] && echo "✅ existují 2 kampaně AdmKamp (originál + obnova)" || { echo "❌ kampaní: $COUNT"; exit 1; }
 
+echo "== obnova: nová kampaň se zadaným názvem =="
+N2=$(curl -s -b a1.jar -X POST -H Content-Type:application/json --data-binary @/tmp/zaloha.json "$B/api/admin/import?mode=new&name=PojmenovanaObnova")
+check_has "kampaň dostala zadaný název" "$N2" '"name":"PojmenovanaObnova"'
+N2ID=$(jv "$N2" "d['campaignId']")
+
+echo "== obnova: přepis existující kampaně =="
+TGT=$(req a1.jar POST /api/campaigns '{"name":"PrepisMe"}' | grep -o '"id":[0-9]*' | cut -d: -f2)
+req a1.jar POST /api/campaigns/$TGT/articles '{"title":"PuvodniClanek"}' > /dev/null
+OW=$(curl -s -b a1.jar -X POST -H Content-Type:application/json --data-binary @/tmp/zaloha.json "$B/api/admin/import?mode=overwrite&target=$TGT")
+check_has "přepis vrací id cílové kampaně" "$OW" "\"campaignId\":$TGT"
+L=$(req a1.jar GET /api/campaigns/$TGT/articles)
+check_has "obsah zálohy je v přepsané kampani" "$L" "Město"
+check_not "původní obsah zmizel" "$L" "PuvodniClanek"
+MY=$(req a1.jar GET /api/campaigns)
+check_has "název a členství přepsané kampaně zůstaly" "$MY" "PrepisMe"
+X=$(curl -s -b a1.jar -X POST -H Content-Type:application/json --data-binary @/tmp/zaloha.json "$B/api/admin/import?mode=overwrite&target=99999")
+check_has "neexistující cíl přepisu odmítnut" "$X" "nenalezena"
+req a1.jar DELETE /api/admin/campaigns/$N2ID > /dev/null
+req a1.jar DELETE /api/admin/campaigns/$TGT > /dev/null
+
 echo "== join jako další DM =="
 # jinyDM se odemkne a vstoupí do AdmKamp jako DM
 req a2.jar POST /api/admin/auth "{\"masterPassword\":\"$MP\"}" > /dev/null

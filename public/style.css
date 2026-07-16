@@ -1228,3 +1228,8 @@ a.att:hover { border-color: var(--accent); }
 .spawn-chip button:hover { color: var(--accent); transform: none; }
 .spawn-list { max-height: 320px; overflow: auto; }
 .spawn-list .pick-row.on { border-color: var(--accent); background: var(--accent-soft); }
+
+/* ---- volba režimu obnovy zálohy ---- */
+.restore-opt { display: block; border: 1.5px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; cursor: pointer; }
+.restore-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.restore-opt input[data-k], .restore-opt select { width: 100%; }

@@ -843,8 +843,30 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   res.end(body);
 });
 
-// obnovení zálohy — vytvoří NOVOU kampaň (přemapuje ID, uživatele spojí podle jména)
-route('POST', '/api/admin/import', async (req, res) => {
+/** Smaže veškerý obsah kampaně (články, obrázky, postavy, inventář, sezení, chat…).
+    Záznam kampaně a členství zůstávají — používá přepis ze zálohy i mazání kampaně. */
+function wipeCampaignData(cid) {
+  const artIds = new Set(db.articles.filter(a => a.campaignId === cid).map(a => a.id));
+  const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
+  db.images.filter(i => i.campaignId === cid).forEach(i => { try { fs.unlinkSync(path.join(UPLOAD_DIR, i.filename)); } catch { } });
+  db.images = db.images.filter(i => i.campaignId !== cid);
+  db.blocks = db.blocks.filter(b => !artIds.has(b.articleId));
+  db.notes = db.notes.filter(n => !artIds.has(n.articleId));
+  db.articles = db.articles.filter(a => a.campaignId !== cid);
+  db.itemInstances = db.itemInstances.filter(i => i.campaignId !== cid);
+  db.invZones = db.invZones.filter(z => z.campaignId !== cid);
+  db.reveals = db.reveals.filter(r => r.campaignId !== cid);
+  db.invLog = db.invLog.filter(l => l.campaignId !== cid);
+  db.characters = db.characters.filter(c => c.campaignId !== cid);
+  db.sessions = db.sessions.filter(s => s.campaignId !== cid);
+  db.templates = db.templates.filter(t => t.campaignId !== cid);
+  db.chatMessages = db.chatMessages.filter(m => !roomIds.has(m.roomId));
+  db.chatReads = db.chatReads.filter(r => !roomIds.has(r.roomId));
+  db.chatRooms = db.chatRooms.filter(r => r.campaignId !== cid);
+}
+
+// obnovení zálohy — buď NOVÁ kampaň (?mode=new&name=…), nebo PŘEPIS existující (?mode=overwrite&target=ID)
+route('POST', '/api/admin/import', async (req, res, params, userId, query) => {
   if (!requireAdmin(req, res)) return;
   const buf = await readBody(req, 80 * 1024 * 1024);
   let backup;
@@ -857,8 +879,29 @@ route('POST', '/api/admin/import', async (req, res) => {
   (backup.users || []).forEach(bu => { const u = db.users.find(x => x.username.toLowerCase() === String(bu.username).toLowerCase()); if (u) userMap.set(bu.id, u.id); });
   const mu = old => userMap.has(old) ? userMap.get(old) : null;
 
-  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [], slotCols: (backup.campaign && backup.campaign.slotCols) || {}, slotOrder: (backup.campaign && backup.campaign.slotOrder) || [], slotNames: (backup.campaign && backup.campaign.slotNames) || {}, autoReveal: !!(backup.campaign && backup.campaign.autoReveal), slotsV2: true };
-  db.campaigns.push(camp);
+  const fields = {
+    categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES],
+    customSlots: (backup.campaign && backup.campaign.customSlots) || [],
+    slotCols: (backup.campaign && backup.campaign.slotCols) || {},
+    slotOrder: (backup.campaign && backup.campaign.slotOrder) || [],
+    slotNames: (backup.campaign && backup.campaign.slotNames) || {},
+    autoReveal: !!(backup.campaign && backup.campaign.autoReveal),
+    slotsV2: true
+  };
+  let camp;
+  if (query && query.mode === 'overwrite') {
+    camp = db.campaigns.find(c => c.id === parseInt(query.target, 10));
+    if (!camp) return sendJSON(res, 404, { error: 'Cílová kampaň nenalezena.' });
+    wipeCampaignData(camp.id); // obsah pryč, záznam kampaně a členství zůstávají
+    Object.assign(camp, fields, { commonLangId: null, homeArticleId: null, iconImageId: null });
+    // výchozí postavy členů byly smazány — vyčistit, ať neukazují do prázdna
+    db.memberships.filter(m => m.campaignId === camp.id).forEach(m => { m.defaultCharId = null; });
+  } else {
+    const name = String(query && query.name || '').trim().slice(0, 80)
+      || ((backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)');
+    camp = { id: nextId(), name, ...fields };
+    db.campaigns.push(camp);
+  }
   for (const s of SYSTEM_CATEGORIES) if (!camp.categories.includes(s)) camp.categories.push(s);
 
   // obrázky
@@ -930,24 +973,7 @@ route('DELETE', '/api/admin/campaigns/:cid', async (req, res, params) => {
   if (!requireAdmin(req, res)) return;
   const cid = parseInt(params.cid, 10);
   if (!db.campaigns.some(c => c.id === cid)) return sendJSON(res, 404, { error: 'Kampaň nenalezena.' });
-  const artIds = new Set(db.articles.filter(a => a.campaignId === cid).map(a => a.id));
-  const charIds = new Set(db.characters.filter(c => c.campaignId === cid).map(c => c.id));
-  const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
-  db.images.filter(i => i.campaignId === cid).forEach(i => { try { fs.unlinkSync(path.join(UPLOAD_DIR, i.filename)); } catch { } });
-  db.images = db.images.filter(i => i.campaignId !== cid);
-  db.blocks = db.blocks.filter(b => !artIds.has(b.articleId));
-  db.notes = db.notes.filter(n => !artIds.has(n.articleId));
-  db.articles = db.articles.filter(a => a.campaignId !== cid);
-  db.itemInstances = db.itemInstances.filter(i => i.campaignId !== cid);
-  db.invZones = db.invZones.filter(z => z.campaignId !== cid);
-  db.reveals = db.reveals.filter(r => r.campaignId !== cid);
-  db.invLog = db.invLog.filter(l => l.campaignId !== cid);
-  db.characters = db.characters.filter(c => c.campaignId !== cid);
-  db.sessions = db.sessions.filter(s => s.campaignId !== cid);
-  db.templates = db.templates.filter(t => t.campaignId !== cid);
-  db.chatMessages = db.chatMessages.filter(m => !roomIds.has(m.roomId));
-  db.chatReads = db.chatReads.filter(r => !roomIds.has(r.roomId));
-  db.chatRooms = db.chatRooms.filter(r => r.campaignId !== cid);
+  wipeCampaignData(cid);
   db.memberships = db.memberships.filter(m => m.campaignId !== cid);
   db.campaigns = db.campaigns.filter(c => c.id !== cid);
   save();
