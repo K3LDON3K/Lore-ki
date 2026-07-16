@@ -21,7 +21,7 @@ ART=$(req a1.jar POST /api/campaigns/$CID/articles '{"title":"Město"}' | grep -
 req a1.jar PUT /api/articles/$ART '{"title":"Město","category":"Města","blocks":[{"type":"paragraph","visibility":"all","content":{"text":"Rušné město."}}]}' > /dev/null
 
 echo "== app-info veřejné =="
-check_has "výchozí název" "$(curl -s $B/api/app-info)" "Lore master"
+check_has "výchozí název" "$(curl -s $B/api/app-info)" "Lore-ki"
 
 echo "== master heslo brána =="
 X=$(req a1.jar GET /api/admin/overview)
@@ -39,7 +39,7 @@ X=$(req a2.jar GET /api/admin/overview)
 check_has "jiná session není admin" "$X" "odemčena"
 
 echo "== změna názvu =="
-check_has "výchozí <title> v index.html" "$(curl -s $B/)" "<title>Lore master</title>"
+check_has "výchozí <title> v index.html" "$(curl -s $B/)" "<title>Lore-ki</title>"
 req a1.jar PUT /api/admin/app-name '{"name":"Kronika říše"}' > /dev/null
 check_has "název změněn (veřejně)" "$(curl -s $B/api/app-info)" "Kronika říše"
 check_has "název je i v <title> (záložka prohlížeče)" "$(curl -s $B/)" "<title>Kronika říše</title>"
@@ -53,7 +53,7 @@ req a1.jar PUT /api/admin/app-name '{"name":"Kronika říše"}' > /dev/null
 
 echo "== export → import roundtrip =="
 curl -s -b a1.jar "$B/api/admin/campaigns/$CID/export" -o /tmp/zaloha.json
-check_has "záloha má formát" "$(cat /tmp/zaloha.json)" "loremaster-backup"
+check_has "záloha má formát" "$(cat /tmp/zaloha.json)" "loreki-backup"
 check_has "obsahuje článek Město" "$(cat /tmp/zaloha.json)" "Rušné město"
 NEW=$(curl -s -b a1.jar -X POST -H Content-Type:application/json --data-binary @/tmp/zaloha.json $B/api/admin/import)
 check_has "import vytvořil novou kampaň" "$NEW" '"ok":true'

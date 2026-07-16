@@ -14,7 +14,7 @@ const state = {
   catColors: {},     // uživatelské barvy kategorií
   viewAs: null,      // userId hráče při náhledu "zobrazit jako"
   viewChar: null,    // id aktivní postavy — „za koho“ se právě dívám
-  appName: 'Lore master',
+  appName: 'Lore-ki',
 };
 const previewCache = new Map(); // cache náhledů referencí
 
@@ -3387,75 +3387,188 @@ async function renderEditor(aid) {
 // ================================================================ NÁPOVĚDA
 // POZOR: při každé změně funkcí aplikace aktualizuj i tento obsah!
 const HELP_SECTIONS = [
-  ['🏰', 'Základní pojmy', `
-    <p><b>Lore master</b> je znalostní wiki pro DnD kampaně. Klíčový princip: <b>každý vidí jen to, co má vidět</b> — oprávnění se nastavují až na úroveň jednotlivých odstavců a filtruje je server, takže skrytý obsah hráči vůbec nedorazí do prohlížeče.</p>
-    <p><b>Role:</b> <b>Dungeon Master (DM)</b> spravuje kampaň a vidí vše. <b>Hráč</b> vidí jen obsah určený jeho postavě. <b>Postava</b> je samostatná jednotka se svými vědomostmi — jeden hráč může mít postav víc a přepíná se mezi nimi (viz sekce Postavy).</p>
-    <p><i>Příklad: článek „Hlavní město“ má společný odstavec pro všechny, odstavec jen pro Kubirika a tajnou poznámku DM. Každý otevře stejný článek, ale uvidí jinou verzi.</i></p>`],
-  ['🔑', 'Přihlášení, registrace a obnova hesla', `
-    <p>Nový uživatel se registruje jménem a heslem (min. 4 znaky) na úvodní stránce. Alternativně mu účet vytvoří DM ve <b>Správě hráčů</b> a přihlašovací údaje mu předá.</p>
-    <p>Zapomenuté heslo řeší odkaz <b>„Zapomenuté heslo?“</b> na přihlašovací stránce — vyžaduje master heslo, které zná správce serveru.</p>`],
-  ['🗺️', 'Kampaně', `
-    <p>Na úvodní stránce „Moje kampaně“ vytvoříte novou kampaň — tvůrce se automaticky stává jejím DM. Rovnou lze (nepovinně) přidat <b>ikonku</b> a <b>krátký popis</b> kampaně; DM je později upraví v <b>⚙️ Nastavení kampaně</b>. Každá kampaň má vlastní články, postavy, jazyky, sezení i chat. Jeden uživatel může být v libovolném počtu kampaní, v jedné jako DM a jinde jako hráč.</p>
-    <p>Každá kampaň má <b>domovský článek</b> (🏠 O kampani v menu) — nelze ho smazat, ale kterýkoli DM ho edituje jako běžný článek: úvod do světa, pravidla stolu, důležité odkazy. Vidí ho všichni členové.</p>
-    <p>Na téže stránce lze nahrát <b>logo aplikace</b> (zobrazí se vlevo nahoře a jako ikonka záložky).</p>
-    <p><b>⚙️ Nastavení kampaně</b> (jen DM) sdružuje vše okolo kampaně do záložek: <b>Obecné</b> (název, popis, ikonka), <b>🧭 Navigace</b> (pořadí položek levého menu — šipkami ↑/↓ a uložit; „Výchozí pořadí“ vrátí původní stav, platí i pro hráče), <b>👥 Hráči a postavy</b> a <b>🏷️ Kategorie</b>. Hráči celé Nastavení v menu nevidí.</p>`],
-  ['🎭', 'Postavy a přepínání „Za:“', `
-    <p>Postavy vytváří DM ve Správě hráčů (＋ postava). Vytvořením postavy vzniká i její článek v kategorii „Hráčské postavy“, který postava <b>vlastní</b> — hráč do něj píše backstory, nahrává fotky a sám určuje, kdo který blok uvidí.</p>
-    <p>Hráč s více postavami se <b>vždy dívá právě za jednu</b> — přepínač <b>„Za“</b> v horní liště. V jeho nabídce lze podle jména postavu <b>vyhledat</b> a hvězdičkou <b>⭐</b> u postavy si nastavíte <b>výchozí postavu</b>, za kterou se kampaň otevře (platí na všech zařízeních). Každá postava má svoje vědomosti: bloky, jazyky, inventář, sezení i chat se řídí aktivní postavou. <i>Příklad: vzkaz viditelný jen Alfě hráč za Betu neuvidí.</i></p>
-    <p>DM může postavu předat jinému hráči (⇄ ve Správě hráčů) — vlastnictví článku a inventář přejdou s ní. Ve Správě hráčů tlačítko <b>＋ postava</b> nabídne buď <b>založit novou postavu</b> (otevře nový článek s předvyplněnou kategorií a vlastníkem), nebo <b>přiřadit nepřiřazenou postavu</b> (článek v kategorii Hráčské postavy, který zatím nikomu nepatří). Vlastníka lze nastavit i přímo v editoru článku postavy (nepovinné pole).</p>`],
+  ['🚀', 'Začínáme — první kroky', `
+    <p>Lore-ki je <b>znalostní wiki pro vaši kampaň</b>. Vypadá jako encyklopedie světa, ale má jednu zvláštnost: <b>každý v ní vidí jen to, co ví jeho postava</b>. Otevřete se spolubojovníkem tentýž článek o městě a on v něm může mít o dva odstavce míň — a vůbec o tom neví.</p>
+    <h4>Jsem hráč, co mám dělat?</h4>
+    <p>Přihlaste se jménem a heslem, které vám dal váš DM. Uvidíte seznam kampaní — klikněte na tu svoji. Vlevo je menu s články, nahoře vyhledávání, vlevo dole bublina 💬 chatu. Doporučujeme začít <b>🏠 O kampani</b> (úvod od DM) a svým článkem postavy v kategorii <b>Hráčské postavy</b> — ten patří vám a můžete si do něj psát.</p>
+    <h4>Jsem DM, co mám dělat?</h4>
+    <p>Zaregistrujte se, vytvořte kampaň (stanete se jejím DM), pak v <b>⚙️ Nastavení kampaně → 👥 Hráči a postavy</b> přidejte hráče a vytvořte jim postavy. Pak už jen pište články a u každého bloku určete, kdo ho uvidí.</p>
+    <h4>Zlaté pravidlo</h4>
+    <p>Než něco pustíte hráčům, zkontrolujte se přepínačem <b>Pohled</b> v horní liště — podívá se na web očima kterékoli postavy a uvidíte přesně to co ona. Je to nejrychlejší způsob, jak si ověřit, že jste omylem neprozradili víc, než jste chtěli.</p>`],
+
+  ['🧩', 'Jak to celé funguje (přečtěte si to)', `
+    <p>Tohle je jediná sekce, kterou opravdu potřebujete pochopit. Zbytek je pak už jen ovládání.</p>
+    <h4>Článek se skládá z bloků</h4>
+    <p>Článek není jeden kus textu, ale <b>stavebnice</b>: každý odstavec, obrázek nebo seznam je samostatný <b>blok</b>. A <b>u každého bloku zvlášť</b> se nastavuje, kdo ho uvidí. Proto může jeden článek „Hostinec U Tří seker“ obsahovat popis pro všechny, tajemství pro jednu postavu a poznámku jen pro DM — a každý si přečte svou verzi.</p>
+    <h4>Oprávnění se týkají POSTAV, ne uživatelů</h4>
+    <p>Tohle je nejčastější zádrhel. Nenastavujete „tohle uvidí Honza“, ale „tohle uvidí Baradir“. Když má Honza dvě postavy, <b>každá ví něco jiného</b> — a on sám vidí vždy jen to, co ví postava, za kterou se právě dívá (přepínač <b>Za</b> v liště). Co ví Baradir, neví Toruk, i když je hraje tentýž člověk.</p>
+    <h4>Skrytý obsah k hráči vůbec nedorazí</h4>
+    <p>Není to jen schované v prohlížeči. Server hráči skrytý text <b>vůbec neodešle</b> — není v datech stránky, nenajde se vyhledáváním, neobjeví se ve zdrojovém kódu. Ani zvídavý hráč se k němu nedostane.</p>
+    <h4>Prázdný článek = neexistující článek</h4>
+    <p>Hráč vidí článek jen tehdy, když v něm má <b>aspoň jeden viditelný blok</b>. Pokud ne, článek pro něj neexistuje — nevidí ho v seznamu, nenajde ho hledáním a přes přímý odkaz dostane „nenalezeno“. Nedozví se ani to, že nějaký takový článek je.</p>`],
+
+  ['👁️', 'Viditelnost bloků — srdce aplikace', `
+    <p>U každého bloku v editoru je rozbalovací pole s volbou:</p>
+    <p><b>Všichni hráči</b> — vidí každý v kampani. Běžný popis světa.</p>
+    <p><b>Pouze DM</b> — vidíte jen vy. Vaše zákulisní poznámky přímo v článku, kde je potřebujete.</p>
+    <p><b>Vybrané postavy</b> — vyberete konkrétní postavy zlatými tlačítky. Ostatní blok neuvidí. Tlačítkem <b>„Vybrat všechny“</b> označíte celou družinu naráz.</p>
+    <h4>Odemykání informací</h4>
+    <p>Tohle je hlavní pracovní postup při hře. Napište rovnou celou pravdu o světě a schovejte ji. Jak se družina dozvídá věci, <b>přepínáte viditelnost bloků</b> z „Pouze DM“ na „Vybrané postavy“ nebo „Všichni“. Nemusíte nic přepisovat — jen odemykáte, co už je napsané. Když někdo něco zjistí sám, odemknete blok jen jemu.</p>
+    <h4>Štítky u bloků</h4>
+    <p>Když článek prohlížíte jako DM (nebo jako vlastník svého článku), u každého bloku svítí štítek <b>Všichni / Pouze DM / jména postav</b>. Hráči tyhle štítky nevidí — nepoznají, že tam něco skrytého vůbec je.</p>
+    <h4>Poznámka DM</h4>
+    <p>Zvláštní typ bloku, který je <b>vždy</b> jen pro DM. Nedá se nastavit jinak, takže se nemůže stát, že ho omylem odhalíte.</p>`],
+
+  ['🎭', 'Postavy a přepínač „Za“', `
+    <p>Postavu vám vytvoří DM. S ní vznikne i <b>její článek</b> v kategorii „Hráčské postavy“ — a ten <b>patří vám</b>: píšete si do něj backstory, nahráváte obrázky a sami určujete, kdo který blok uvidí. Můžete tak mít v článku tajemství, které nezná ani zbytek družiny.</p>
+    <h4>Mám víc postav</h4>
+    <p>Pak se <b>vždy díváte za právě jednu</b> — v liště je přepínač <b>Za</b>. Vše se řídí aktivní postavou: co vidíte v článcích, co najdete hledáním, který inventář, které jazyky, co čtete v chatu a pod jakým jménem píšete zprávy.</p>
+    <p>V nabídce přepínače je <b>vyhledávací pole</b> (u delších seznamů) a u každé postavy <b>hvězdička ⭐</b> — tou si nastavíte <b>výchozí postavu</b>, za kterou se kampaň otevře po přihlášení. Platí na všech zařízeních.</p>
+    <h4>Pozor na záměnu</h4>
+    <p>Píšete-li do chatu nebo poznámku, jde to vždy za <b>aktivní</b> postavu. Než začnete psát, mrkněte, koho máte přepnutého.</p>`],
+
   ['📚', 'Články, kategorie a seznam', `
-    <p>Článek má název, popis, kategorii, štítky, hlavní obrázek a obsah složený z bloků. Hráč vidí článek, jen pokud obsahuje aspoň jeden blok viditelný jeho postavě — jinak pro něj článek neexistuje (ani ve vyhledávání).</p>
-    <p><b>Nový článek</b> se zakládá rovnou formulářem (název, kategorie, metadata, bloky) — uloží se až tlačítkem „Vytvořit článek“. <b>Kategorie</b> spravuje DM v <b>⚙️ Nastavení kampaně → 🏷️ Kategorie</b>. Systémové kategorie <b>Předměty</b>, <b>Hráčské postavy</b>, <b>Jazyk</b>, <b>NPC</b> a <b>Monstra</b> nelze odebrat — mají zvláštní funkce.</p>
-    <p><b>Galerie:</b> nahoře v článku je hlavní fotka (portrét 3:4) a vedle ní náhledy obrázků se zaškrtnutým „zobrazit v náhledu“. Kliknutím se otevře velký náhled s listováním šipkami (←/→, Esc zavře).</p>
-    <p>Seznam článků má <b>filtry</b> (text, kategorie, štítek) a volbu počtu náhledových obrázků. V náhledu se ukáže hlavní obrázek a obrázky se zaškrtnutým „zobrazit v náhledu“ — nikdy nic, co postava nesmí vidět. Každá kategorie má vlastní <b>ikonku a barevný nádech</b> (článek bez obrázku má místo náhledu ikonku kategorie); u vlastních kategorií si barvu zvolíte ve správě kategorií.</p>`],
-  ['🧱', 'Obsahové bloky', `
-    <p>Obsah článku se skládá z bloků; každý blok má vlastní viditelnost. Typy: <b>Nadpis</b> (3 úrovně), <b>Odstavec</b> (formátovaný text), <b>Seznam</b> (i číslovaný), <b>Citace</b>, <b>Upozornění</b> ⚠️, <b>Oddělovač</b>, <b>Obrázek</b> (s ořezem a velikostí 25–100 %), <b>Audio</b> (přehrávač, MP3), <b>YouTube video</b> (odkaz + velikost okna), <b>Příloha</b> (bublina s náhledem a stažením — obrázky, PDF…), <b>Odkaz na článek</b>, <b>Stat blok (5e)</b> a <b>Poznámka DM</b> (vždy jen pro DM).</p>
-    <p><b>Stat blok</b> má předpřipravené šablony tvorů (Goblin, Vlk, Zlobr…), vlastnosti SÍL–CHA s modifikátory a záchrannými hody (SAVE), iniciativu, dovednosti, zranitelnosti, imunity, vybavení a sekce Traits / Actions / Bonus Actions / Legendary Actions — vzhledem jako v D&D Beyond. U každého údaje je zaškrtávátko, zda se má po uložení zobrazit.</p>
-    <p><b>Import z D&D Beyond:</b> u článku v kategorii <b>Monstra</b> vložte v editoru odkaz na monstrum a klikněte „Importovat z odkazu“ — vyplní se název i celý stat blok. Když stránka stažení odmítne, zkopírujte stat blok ze stránky a použijte „Importovat z textu“.</p>
-    <p><b>Import hráčské postavy:</b> u článku v kategorii <b>Hráčské postavy</b> vložte odkaz na postavu z D&D Beyond (musí být nastavená jako <i>veřejná</i>) a klikněte „Importovat postavu“ — naplní se jméno, rasa, třída/úroveň, background, přesvědčení, karta se staty a bloky s osobností a příběhem. AC a HP jsou dopočítané, doporučujeme zkontrolovat. Inventář, měnu ani kouzla import nepřebírá.</p>`],
-  ['👁️', 'Viditelnost a odemykání informací', `
-    <p>U každého bloku volíte: <b>Všichni hráči</b>, <b>Pouze DM</b>, nebo <b>Vybrané postavy</b>. Hráči nikdy nepoznají, že v článku je skrytý obsah — nezobrazí se prázdné místo ani upozornění.</p>
-    <p><b>Odemykání:</b> až družina informaci získá, DM prostě změní viditelnost bloku (např. z „Pouze DM“ na „Kubirik“) — vše se spravuje v jediném článku, žádné kopie stránek.</p>
-    <p>Štítky viditelnosti (zelený „Všichni“, fialový „Pouze DM“, zlatý se jmény postav) vidí jen DM a vlastník článku postavy.</p>`],
-  ['✏️', 'Editace článků', `
-    <p><b>Přímo v článku:</b> najetím na blok se objeví ✏️ ↑ ↓ ✕ (dvojklik blok rovnou otevře), tlačítko <b>＋</b> mezi bloky vloží nový — z nabídky typů nebo „📋 Ze šablony…“. Změny se ukládají hned.</p>
-    <p><b>Celý editor</b> (tlačítko u názvu) upravuje i metadata: název, popis, kategorii, štítky a hlavní obrázek (s odebráním a velikostí). Kterýkoli blok jde uložit jako <b>šablonu</b> (🖫) pro opakované použití.</p>
-    <p><b>Formátovaný text:</b> tučně, kurzíva, podtržení, velikost a barva písma, spoiler, cizí jazyk, obrázek do textu. Vše je i v <b>kontextové nabídce</b> (pravé tlačítko / podržení prstu). Obrázek jde vložit i přetažením souboru nebo ze schránky (Ctrl+V); kliknutím na něj se chytne rohové táhlo pro změnu velikosti, pravé tlačítko nabídne šířky.</p>
-    <p><b>Obrázek z textu v náhledech:</b> v kontextové nabídce obrázku zvolte <b>„☆ Zobrazit i v náhledech“</b> — obrázek se pak objeví v seznamu článků i v galerii článku, stejně jako u obrázkového bloku se zaškrtnutým „zobrazit v náhledu“. Označený obrázek pozná editor podle <b>zlatého rámečku</b> a <b>zlaté hvězdičky ★</b> v rohu (najetím myší se ukáže vysvětlení; čtenářům se hvězdička neukazuje). Platí i tady oprávnění: je-li blok skrytý, jeho obrázek se v náhledech nikomu nepovolanému neobjeví.</p>
-    <p><b>Hlavní obrázek</b> se ořezává dvakrát: širokoúhle (16:9) pro článek a čtvercově (1:1) pro seznam. GIF se neořezává, aby neztratil animaci.</p>`],
-  ['🔗', 'Reference mezi články', `
-    <p>Do textu vložíte odkaz na jiný článek tlačítkem 🔗 nebo z kontextové nabídky — v textu vypadá jako barevný štítek s názvem. <b>Najetím myší</b> se ukáže bublina s krátkým náhledem; bez oprávnění jen „🔒 K tomuto článku nemáte přístup“.</p>
-    <p><b>Kliknutím</b> se článek otevře v <b>panelu vpravo</b> — stránka se rozdělí na tři části (menu | obsah | reference) a vy neztratíte místo, kde jste četli. Panel je dočasný: zavře se křížkem ✕ nebo jakýmkoli přechodem jinam. Tlačítkem <b>„↗ Přejít na stránku“</b> nahoře otevřete článek přes celou obrazovku. Reference uvnitř panelu se otevírají zase v panelu, takže se dá řetězit. Držíte-li Ctrl/Cmd, odkaz se chová klasicky (nové okno).</p>
-    <p>Hráč referenci na skrytý článek vůbec nedostane jako odkaz — zbyde jen prostý text. Na konci každého článku je sekce <b>„🔁 Reference — odkazuje sem“</b> se zpětnými odkazy (jen z bloků, které smíte vidět).</p>`],
+    <p>Článek má název, popis, kategorii, štítky (#), hlavní obrázek a obsah z bloků.</p>
+    <h4>Zakládání a úpravy</h4>
+    <p>Nový článek: tlačítko <b>＋ Nový článek</b> v seznamu. Vyplníte název, kategorii a metadata a uloží se až tlačítkem <b>Vytvořit článek</b>.</p>
+    <p>Hotový článek jde upravovat <b>přímo v něm</b>: najeďte myší na blok a objeví se ✏️ (upravit), ↑ ↓ (posunout) a ✕ (odstranit). <b>Dvojklik</b> na blok ho rovnou otevře k úpravě. Tlačítko <b>+</b> mezi bloky vloží nový blok na to místo. Kompletní formulář se vším všudy je pod <b>✏️ Celý editor</b>.</p>
+    <h4>Kategorie</h4>
+    <p>Vlevo v menu jsou kategorie s počty článků a barevným puntíkem. Kategorie spravuje DM v <b>⚙️ Nastavení kampaně → 🏷️ Kategorie</b> — přidává, odebírá (články zůstanou, jen budou „Nezařazeno“) a mění jim barvu. Nová kategorie napsaná v editoru se do seznamu přidá sama.</p>
+    <p>Šest kategorií je <b>systémových</b> a nejdou odebrat, protože mají zvláštní funkce: <b>Kampaň</b> (domovský článek), <b>Hráčské postavy</b>, <b>Předměty</b> (inventář), <b>Jazyk</b>, <b>NPC</b> a <b>Monstra</b> (import z D&D Beyond).</p>
+    <h4>Filtry a náhledy</h4>
+    <p>Nad seznamem je filtrování podle textu, kategorie a štítku. Vpravo si přepnete, kolik <b>náhledových obrázků</b> se u článků ukazuje. Článek bez obrázku dostane ikonku své kategorie v její barvě.</p>`],
+
+  ['🧱', 'Typy bloků', `
+    <p><b>Nadpis</b> — tři úrovně, člení delší článek.</p>
+    <p><b>Odstavec</b> — základní text s formátováním (viz další sekce).</p>
+    <p><b>Seznam</b> — odrážkový nebo číslovaný.</p>
+    <p><b>Citace</b> — odsazený text, hodí se na výroky postav a úryvky z knih.</p>
+    <p><b>Upozornění</b> — zvýrazněný rámeček ⚠️ na důležité informace.</p>
+    <p><b>Oddělovač</b> — vodorovná čára.</p>
+    <p><b>Obrázek</b> — s ořezem, popiskem, volbou šířky a zaškrtávátkem <b>„zobrazit v náhledu“</b> (pak se objeví v seznamu článků a galerii).</p>
+    <p><b>Audio</b> — nahraný zvuk, přehraje se v článku.</p>
+    <p><b>YouTube video</b> — vložíte odkaz, vyberete velikost, přehraje se přímo v článku.</p>
+    <p><b>Příloha</b> — libovolný soubor (PDF, mapa…) ke stažení.</p>
+    <p><b>Odkaz na článek</b> — proklik na jiný článek jako samostatný blok.</p>
+    <p><b>Stat blok (5e)</b> — statistiky tvora v klasickém vzhledu. Jsou předpřipravené šablony (Goblin, Vlk, Kostlivec, Bandita, Zlobr, Mág) i vlastní položky. U dlouhých bloků se text sází do sloupců.</p>
+    <p><b>Poznámka DM</b> — vždy jen pro DM.</p>
+    <p class="muted">Kterýkoli blok si můžete uložit jako <b>šablonu</b> (🖫) a jinde ji vložit (📋).</p>`],
+
+  ['✏️', 'Psaní a formátování textu', `
+    <p>V textových blocích máte lištu a <b>kontextovou nabídku</b> (pravé tlačítko myši, na dotyku podržení prstu). V nabídce je vše podstatné pohromadě.</p>
+    <h4>Formátování</h4>
+    <p>Tučně, kurzíva, podtržení, velikost písma a <b>barva písma</b> (paleta s doporučenými barvami čitelnými v denním i nočním režimu, vlastní barva 🎨 a „Zrušit formátování“).</p>
+    <h4>Obrázky přímo v textu</h4>
+    <p>Vložíte je tlačítkem 🖼, <b>přetažením souboru</b> do textu nebo <b>ze schránky (Ctrl+V)</b> — třeba screenshot. Kliknutím na obrázek chytnete rohové táhlo pro změnu velikosti, pravé tlačítko nabídne pevné šířky (25–100 %) a odstranění.</p>
+    <p>V nabídce obrázku je i <b>„☆ Zobrazit i v náhledech“</b> — obrázek se pak ukáže v seznamu článků a v galerii nahoře. Označený obrázek poznáte podle <b>zlatého rámečku</b> a hvězdičky ★ v rohu (hráči ji nevidí).</p>
+    <h4>Další v nabídce</h4>
+    <p><b>Spoiler</b> (▓), <b>cizí jazyk</b> (🌐), <b>reference na článek</b> (🔗) — každé má svou sekci níže.</p>`],
+
+  ['🔗', 'Reference — odkazy mezi články', `
+    <p>Označíte text a v nabídce zvolíte <b>🔗 Reference</b>; vyberete cílový článek. V textu z toho bude barevný štítek.</p>
+    <p><b>Najetím myší</b> se ukáže bublina s krátkým náhledem cíle.</p>
+    <p><b>Kliknutím</b> se článek otevře v <b>panelu vpravo</b> — stránka se rozdělí na tři části (menu | článek | reference) a vy neztratíte místo, kde jste četli. Tlačítkem <b>„↗ Přejít na stránku“</b> nahoře si ho otevřete přes celou obrazovku, ✕ panel zavře. Reference uvnitř panelu se otevírají zase v panelu, takže se dá řetězit.</p>
+    <h4>A oprávnění?</h4>
+    <p>Hráč, který na cílový článek nemá právo, <b>nedostane odkaz vůbec</b> — zbyde mu jen obyčejný text. Nepozná, že tam nějaký odkaz je. V bublině se případně objeví jen „🔒 K tomuto článku nemáte přístup“.</p>
+    <p>Na konci každého článku je sekce <b>„🔁 Reference — odkazuje sem“</b> se zpětnými odkazy (jen z bloků, které smíte vidět).</p>`],
+
+  ['🌐', 'Cizí jazyky', `
+    <p>Jazyk je <b>článek v kategorii „Jazyk“</b> s vlastní unikátní barvou. „Běžný jazyk“ existuje automaticky a umí ho každý.</p>
+    <h4>Jak se používá</h4>
+    <p>Označíte text, v kontextové nabídce zvolíte <b>🌐 Označit jako cizí jazyk</b> a vyberete jazyk. Text zbarví do barvy jazyka a podtrhne se.</p>
+    <h4>Co uvidí ostatní</h4>
+    <p>Postava, která jazyk <b>ovládá</b>, čte text normálně. Postava, která ho <b>neovládá</b>, dostane <b>náhodné znaky stejné délky</b> — pozná tedy, že tam něco je a jak je to dlouhé, ale ne co. Původní text se k ní ze serveru vůbec nedostane, takže ho nevydoluje ani ze zdrojového kódu.</p>
+    <p>Jakmile DM postavě jazyk přidělí, text se jí <b>okamžitě</b> zpřístupní — nemusí se nic přepisovat.</p>
+    <h4>Kdo jazyky přiděluje</h4>
+    <p>Pouze DM: v <b>Nastavení kampaně → 👥 Hráči a postavy</b> tlačítkem 🌐 u postavy, nebo přímo v editoru článku postavy. Jazyky, které postava umí, jsou vypsané na jejím článku.</p>
+    <p>V chatu si jazyk zprávy vyberete barevnými tlačítky — psát můžete jen jazykem, který vaše postava <b>ovládá</b> (DM může kterýmkoli).</p>`],
+
   ['▓', 'Spoilery', `
-    <p>Označte text a v kontextové nabídce zvolte <b>„Označit jako spoiler“</b> (nebo tlačítko ▓). Čtenáři se text zobrazí začerněný; po kliknutí dostane dotaz, zda chce spoiler odkrýt. Odmítne-li, text zůstane skrytý.</p>`],
-  ['🌐', 'Jazyky', `
-    <p>Jazyk = článek v systémové kategorii <b>Jazyk</b> s unikátní barvou. „Běžný jazyk“ existuje automaticky a zná ho každá postava. Ostatní jazyky přiřazuje postavám <b>pouze DM</b> (🌐 ve Správě hráčů nebo v editoru článku postavy).</p>
-    <p>V textu označíte pasáž → pravé tlačítko → <b>„Označit jako cizí jazyk…“</b>. Text se podtrhne barvou jazyka. Postava, která jazyk zná, čte originál; <b>neznalá postava vidí náhodná písmena stejné délky</b> s popiskem „Neznámá řeč“ — originál jí server vůbec nepošle. Platí to i ve vyhledávání, náhledech a chatu. Když se postava jazyk naučí, texty se jí okamžitě „rozšifrují“.</p>`],
-  ['🎒', 'Inventář a předměty', `
-    <p>Předmět = článek v kategorii <b>Předměty</b> s váhou (lb), cenou a vzácností (Běžný → Artefakt, barevně). Do inventáře postavy vkládá předměty <b>DM</b> (＋ Přidat předmět na článku postavy); opakované vložení navyšuje množství, ± mění počet.</p>
-    <p>Inventář vidí jen daná postava a DM. U předmětu lze psát poznámky s viditelností <b>„DM + hráč“</b> nebo <b>„Pouze DM“</b> — tytéž poznámky se dle oprávnění ukazují i na článku předmětu v sekci „V inventářích“. Dole se počítá celková váha.</p>`],
+    <p>Označte text a v nabídce zvolte <b>▓ Spoiler</b>. Čtenáři se text zobrazí <b>začerněný</b>. Po kliknutí dostane dotaz, jestli chce spoiler opravdu odkrýt — když odmítne, text zůstane skrytý.</p>
+    <p>Hodí se na věci, které hráč <b>smí</b> vědět, ale možná nechce (dějové zvraty, obsah modulu). <b>Není to nástroj na utajení</b> — kdo klikne, uvidí. Na skutečné tajemství použijte viditelnost bloku.</p>`],
+
   ['📝', 'Poznámky ke článkům', `
-    <p>Pod každým článkem může kdokoli napsat poznámku a zvolit, které postavy ji uvidí. Autor ji vidí hned (se stavem „čeká na schválení“), DM vždy; ostatním se zobrazí <b>až po schválení</b> — schvaluje DM, u článku postavy i její vlastník. Autorem poznámky je postava.</p>`],
+    <p>Pod každým článkem si můžete připsat poznámku za svou postavu — co si zapamatovala, co ji napadlo.</p>
+    <p>Zlatými tlačítky vyberete, <b>které postavy ji uvidí</b> (vy a DM vždycky). Tlačítko „Vybrat všechny“ označí celou družinu.</p>
+    <p>Poznámka k <b>cizímu</b> článku postavy se zobrazí ostatním až po <b>schválení</b> — schvaluje ji DM nebo vlastník té postavy. Než ji schválí, vidíte ji jen vy a DM.</p>`],
+
+  ['🎒', 'Inventář a předměty', `
+    <p>Předmět je <b>článek v kategorii „Předměty“</b> — má váhu, cenu a vzácnost (ta se barví podle zvyklostí D&D).</p>
+    <p>Předměty vkládá do inventáře postavy <b>DM</b> (s množstvím). Inventář najdete na článku postavy a vidí ho <b>jen vlastník a DM</b>. Sčítá se váha.</p>
+    <p>K předmětu v inventáři píše hráč i DM <b>poznámky</b> s viditelností <b>„DM + hráč“</b> nebo <b>„Pouze DM“</b> — hodí se na prokletí, která hráč ještě netuší. Tytéž poznámky se podle oprávnění ukazují i na článku předmětu v sekci „V inventářích“.</p>`],
+
   ['🗓', 'Herní sezení', `
-    <p>Sezení zakládá DM: název, datum a <b>účastnící se postavy</b>. Ne-účastník sezení nevidí, neotevře a nenajde. Stránka sezení má sbalitelné segmenty (Rozbalit/Složit vše, filtr podle postav):</p>
-    <p><b>📜 Scénář</b> — dva sloupce jen pro DM: vlevo plán, vpravo poznámky k průběhu; každý sloupec má vlastní Upravit/Uložit. Hráčům se scénář nikdy neodešle. <b>📖 Zápis DM</b> — plnohodnotné bloky s viditelností (veřejné i tajné části), editace přímo na stránce přes ＋ a ✏️. <b>🎭 Zápisy hráčů</b> — každá účastnící se postava má svůj zápis z více bloků, u každého bloku sama volí viditelnost.</p>
-    <p>Ukládání: automaticky každou minutu, tlačítky 💾, klávesou <b>Ctrl+S / Cmd+S</b>; při odchodu s neuloženými změnami se objeví varování. K sezení lze přiřadit chat — jeho historie je pak na stránce sezení.</p>`],
+    <p>Sezení je záznam jednoho hraní: název, datum a účastnící se postavy.</p>
+    <h4>Scénář (jen DM)</h4>
+    <p>Dvousloupcová příprava — vlevo scénář, vpravo poznámky. <b>Hráči ho nevidí nikdy</b>, ani náhodou.</p>
+    <h4>Zápis DM</h4>
+    <p>Skládá se z bloků a <b>u každého se nastavuje viditelnost</b> stejně jako v článku. Můžete tak sepsat, co se stalo, a část nechat jen pro sebe nebo pro konkrétní postavy.</p>
+    <h4>Zápisy hráčů</h4>
+    <p>Každý hráč si píše svůj zápis, taky po blocích s vlastní viditelností. Můžete tedy něco nechat jen pro sebe a DM.</p>
+    <h4>Ukládání</h4>
+    <p>Ukládá se <b>automaticky každou minutu</b>, ručně tlačítkem 💾 nebo <b>Ctrl+S</b>. Když byste odcházeli s neuloženými změnami, aplikace se zeptá.</p>
+    <p>K sezení se dá přiřadit <b>chatovací místnost</b> — odkaz se pak objeví na stránce sezení.</p>`],
+
   ['💬', 'Chat', `
-    <p>Plovoucí bublina 💬 vlevo dole (číslo = nepřečtené zprávy). Místnosti zakládá DM a zve do nich <b>postavy</b>; místnost jde přiřadit k sezením. Zprávy chodí v reálném čase a u příchozí cizí zprávy zazní jemné pípnutí.</p>
-    <p><b>Šeptání:</b> zlatými tlačítky u pole „Tajně“ vyberete příjemce — jednu i více postav v místnosti. Hráč má navíc tlačítko <b>„jen DM“</b> (zpráva jen pro vypravěče); to se s výběrem postav vylučuje. <b>Pozor:</b> šeptá-li postava jiným postavám, <b>DM zprávu vždy vidí</b> — je to jeho stůl. U zprávy je proto značka „(+ DM)“. Pro ostatní jsou tajné zprávy zcela neviditelné. <b>Jazyk zprávy</b> volíte barevnými chipy — psát lze jen jazykem, který vaše postava ovládá; neznalí příjemci vidí šifru. Mazat zprávy smí jen DM.</p>`],
-  ['🕵️', 'Zobrazit jako (emulace) — pro DM', `
-    <p>Přepínačem <b>„Pohled“</b> v horní liště se DM podívá na celý web očima kterékoli postavy — články, seznamy, vyhledávání, obrázky, inventář, sezení, jazyky i chat. V nabídce lze postavu nebo hráče <b>vyhledat podle jména</b> (u delších seznamů). Zlatý pruh připomíná, čí pohled je aktivní.</p>
-    <p>V emulaci DM i <b>jedná za postavu</b>: poznámky, zápisy a zprávy v chatu se uloží jejím jménem — hodí se pro NPC.</p>`],
-  ['👥', 'Správa hráčů (DM)', `
-    <p>Najdete ji v <b>⚙️ Nastavení kampaně → záložka 👥 Hráči a postavy</b>. DM zde: vytváří účty hráčům (jméno + heslo k předání), přidává existující registrované uživatele (seznam všech mimo kampaň s filtrem), mění hráčům hesla (🔑), odebírá je z kampaně, a u každého hráče spravuje postavy — ＋ přidat, 🌐 jazyky, ⇄ předat jinému hráči, ✕ odebrat.</p>`],
+    <p>Bublina 💬 vlevo dole, číslo u ní jsou nepřečtené zprávy. Zprávy chodí <b>v reálném čase</b> a u cizí zprávy jemně pípne.</p>
+    <p class="muted">Zvuk povolí prohlížeč až po prvním kliknutí do aplikace — to je jeho pravidlo, ne chyba.</p>
+    <h4>Místnosti</h4>
+    <p>Zakládá je <b>DM</b> a zve do nich <b>postavy</b> (ne uživatele). Kdo v místnosti není, o její existenci neví.</p>
+    <h4>Šeptání</h4>
+    <p>U pole <b>„Tajně“</b> vyberete zlatými tlačítky příjemce — jednu i víc postav. Hráč má navíc <b>„jen DM“</b> (zpráva jen pro vypravěče); to se s výběrem postav vylučuje.</p>
+    <p><b>Důležité:</b> když postava šeptá jiné postavě, <b>DM to vidí taky</b> — je to jeho stůl. Proto je u zprávy značka <b>„(+ DM)“</b>, ať o tom všichni vědí. Pro <b>ostatní</b> jsou tajné zprávy zcela neviditelné — nepoznají ani, že nějaká padla.</p>
+    <h4>Jazyky v chatu</h4>
+    <p>Barevnými tlačítky zvolíte jazyk zprávy. Psát můžete jen jazykem, který vaše postava umí; kdo ho neumí, uvidí šifru.</p>
+    <p>Mazat zprávy smí jen DM. Stavový pruh nad polem vždy ukazuje, čím a komu právě píšete.</p>`],
+
   ['🔍', 'Vyhledávání', `
-    <p>Pole 🔍 v horní liště. Už <b>při psaní</b> (od dvou znaků) vyjede pod polem nabídka nalezených článků s ikonkou kategorie a úryvkem textu — kliknutím se článek rovnou otevře. Procházet se dá i <b>šipkami ↑/↓</b> a potvrdit Enterem, <b>Esc</b> nabídku zavře. <b>Enter</b> bez vybrané položky otevře stránku se všemi výsledky.</p>
-    <p>Prohledává názvy, popisy, štítky a obsah bloků — každý jen v rozsahu svých oprávnění: skryté bloky, neznámé jazyky ani cizí sezení se ve výsledcích ani v našeptávači neobjeví.</p>`],
-  ['🛠', 'Tipy pro provoz', `
-    <p>V pravém rohu lišty je <b>zelená tečka s číslem</b> — kolik lidí z kampaně je právě přihlášeno (má otevřenou aplikaci); kliknutím se zobrazí jména. Vedle je <b>?</b> (tato nápověda) a <b>jméno uživatele</b>, pod kterým najdete přepnutí <b>denního/nočního režimu</b> a <b>Odhlásit</b>.</p>
-    <p><b>Administrace aplikace</b> (tlačítko na úvodní obrazovce, chráněné master heslem) umožňuje změnit název a logo aplikace, spravovat všechny kampaně (export zálohy do souboru, obnovení ze zálohy jako nová kampaň, smazání, vstup jako další DM) a zobrazit všechny uživatele s jejich rolemi v kampaních.</p>
-    <p>Celá kampaň žije ve složce <code>data/</code> vedle serveru — zálohujte ji prostým zkopírováním. Při aktualizaci aplikace přepisujte jen programové soubory, <code>data/</code> nechte být. Master heslo pro obnovu účtů lze změnit spuštěním <code>MASTER_PASSWORD='…' node server.js</code>. Tmavý/světlý režim přepnete v nabídce pod svým jménem vpravo nahoře.</p>`],
+    <p>Pole 🔍 v horní liště. Už <b>při psaní</b> (od dvou znaků) vyjede nabídka nalezených článků s ikonkou kategorie a úryvkem — kliknutím se článek rovnou otevře.</p>
+    <p>Procházet se dá i <b>šipkami ↑/↓</b> a potvrdit Enterem, <b>Esc</b> nabídku zavře. <b>Enter</b> bez vybrané položky otevře stránku se všemi výsledky.</p>
+    <p>Řadí se od nejtrefnějšího: nejdřív shody v <b>názvu</b>, pak v popisu a štítcích, nakonec v textu článku.</p>
+    <p>Prohledává názvy, popisy, štítky i obsah bloků — ale <b>jen v rozsahu vašich oprávnění</b>. Skryté bloky, texty v neznámém jazyce ani cizí sezení se ve výsledcích neobjeví.</p>`],
+
+  ['🕵️', 'Pohled — kontrola očima hráče (DM)', `
+    <p>Přepínačem <b>Pohled</b> v horní liště se podíváte na celý web <b>očima kterékoli postavy</b> — články, seznamy, vyhledávání, obrázky, inventář, sezení, jazyky i chat. V nabídce jde postavu vyhledat podle jména. Zlatý pruh nahoře připomíná, čí pohled je aktivní; <b>„Ukončit náhled“</b> vás vrátí zpět.</p>
+    <p><b>Používejte to.</b> Je to jediný spolehlivý způsob, jak si před hrou ověřit, že hráči vidí přesně to, co mají.</p>
+    <h4>Pozor: v náhledu jednáte ZA postavu</h4>
+    <p>Poznámky, zápisy a zprávy v chatu se v tomto režimu uloží <b>jejím jménem</b>. Je to záměr — hodí se na NPC — ale dejte si pozor, ať omylem nenapíšete něco za hráče.</p>`],
+
+  ['⚙️', 'Nastavení kampaně (DM)', `
+    <p>Vše kolem kampaně je na jednom místě, rozdělené na záložky. Hráči tuhle položku v menu nevidí.</p>
+    <h4>⚙️ Obecné</h4>
+    <p>Název, krátký popis a ikonka kampaně. Domovský článek (🏠 O kampani) se upravuje přímo v něm.</p>
+    <h4>🧭 Navigace</h4>
+    <p>Pořadí položek v levém menu — šipkami ↑/↓ a uložit. Platí pro celou kampaň, tedy i pro hráče. „Výchozí pořadí“ vrátí původní stav.</p>
+    <h4>👥 Hráči a postavy</h4>
+    <p>Vytvoření účtu hráči (jméno + heslo k předání), přidání už zaregistrovaného uživatele, změna hesla (🔑), odebrání z kampaně. U každého hráče spravujete postavy: <b>＋ postava</b> (nová, nebo přiřazení postavy bez vlastníka), <b>🌐 jazyky</b>, <b>⇄ předat</b> jinému hráči (vlastnictví článku i inventář jdou s ní) a <b>✕ odebrat</b>.</p>
+    <h4>🏷️ Kategorie</h4>
+    <p>Přidání, odebrání a barva kategorií.</p>`],
+
+  ['🐉', 'Import z D&D Beyond (DM)', `
+    <p>U článků v kategorii <b>Monstra</b> a <b>Hráčské postavy</b> je v editoru import.</p>
+    <h4>Monstra</h4>
+    <p>Vložte <b>odkaz</b> na monstrum — funguje pro volně dostupný obsah (základní sada / SRD). <b>Placený obsah nebo obsah za přihlášením</b> server načíst nedokáže, D&D Beyond ho vydá jen vašemu prohlížeči. Řešení: stat blok na stránce označte, zkopírujte (Ctrl+C) a vložte do pole <b>„Importovat z textu“</b> — tak projde i placený obsah.</p>
+    <h4>Postavy</h4>
+    <p>Vložte odkaz na postavu. Musí být na D&D Beyond nastavená jako <b>veřejná</b> (Character Privacy → Public). Naimportuje jméno, rasu, třídu, staty, features &amp; traits a příběh. <b>AC a HP jsou dopočítané — zkontrolujte je.</b> Nemáte odkaz? Tlačítko „Vyplnit ručně“ přidá prázdnou kartu.</p>`],
+
+  ['🛡️', 'Administrace aplikace', `
+    <p>Tlačítko na úvodní obrazovce se seznamem kampaní, chráněné <b>master heslem</b>. Odemčení platí jen pro vaši přihlášenou relaci.</p>
+    <p>Umí: změnit <b>název a logo</b> aplikace (název se propíše i do záložky prohlížeče), zobrazit <b>všechny kampaně a uživatele</b> s rolemi, <b>exportovat zálohu</b> kampaně do souboru, <b>obnovit ze zálohy</b> jako novou kampaň, <b>smazat</b> kampaň a <b>vstoupit do kampaně jako další DM</b>.</p>
+    <p class="muted">Master heslo se nastavuje mimo aplikaci — souborem <code>data/master-password.txt</code> nebo proměnnou <code>MASTER_PASSWORD</code>. Slouží i k obnově zapomenutého hesla na přihlašovací obrazovce.</p>`],
+
+  ['💾', 'Zálohy a provoz', `
+    <p><b>Zálohujte přes Administraci → export zálohy.</b> Vznikne JSON se vším včetně obrázků, který jde kdykoli naimportovat zpět jako novou kampaň. Dělejte to pravidelně, ideálně po každém sezení.</p>
+    <p>Celá data žijí ve složce <code>data/</code> vedle serveru — dá se zálohovat i prostým zkopírováním. Při aktualizaci aplikace přepisujte jen programové soubory, <code>data/</code> nechte být.</p>
+    <p><b>Restart serveru odhlásí přihlášené</b> — přihlášení je držené v paměti. Data zůstanou.</p>
+    <p>Neupravujte tentýž článek ve dvou lidech naráz — kdo uloží druhý, přepíše toho prvního.</p>`],
+
+  ['🖥️', 'Ovládání a drobnosti', `
+    <p><b>Pravý horní roh:</b> zelená tečka s číslem = kolik lidí z kampaně je právě online (kliknutím jména), <b>?</b> = tato nápověda, <b>vaše jméno</b> = nabídka s přepnutím <b>denního/nočního režimu</b> a <b>Odhlásit</b>.</p>
+    <p><b>Cesta pod lištou</b> (Kampaně / Kampaň / Sekce / Stránka) ukazuje, kde jste — každá část je proklikávací. Šipka ← vás vrátí zpět.</p>
+    <p><b>Kontextová nabídka</b> (pravé tlačítko / podržení prstu) funguje v textu, na obrázcích i na blocích a schovává většinu funkcí.</p>
+    <p><b>Klávesy:</b> Ctrl+S uloží sezení, Enter ve vyhledávání otevře výsledky, Esc zavírá nabídky.</p>
+    <p><b>Zapomenuté heslo:</b> na přihlašovací obrazovce, potřebujete master heslo od správce.</p>
+    <p><b>Mobil a tablet:</b> rozhraní se přizpůsobí, menu se schová pod ☰.</p>`],
 ];
 
 function renderHelp() {

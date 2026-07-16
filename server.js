@@ -40,6 +40,12 @@ let db = {
   chatMessages: [], // {id, roomId, authorId, authorCharId(null=DM), langId, secretTo: null|'dm'|[charId], text, createdAt}
   chatReads: [],    // {roomId, key('u<uid>'|'c<charId>'), lastRead}
 };
+const APP_NAME_DEFAULT = 'Lore-ki'; // výchozí název; v provozu ho přebíjí db.settings.appName
+// Formát zálohy: nové se píší jako 'loreki-backup', ale importovat jde i starší
+// 'loremaster-backup' — jinak by přestaly fungovat dřív vyexportované soubory.
+const BACKUP_FORMAT = 'loreki-backup';
+const BACKUP_FORMATS_IN = ['loreki-backup', 'loremaster-backup'];
+
 const SYSTEM_CATEGORIES = ['Kampaň', 'Předměty', 'Hráčské postavy', 'Jazyk', 'NPC', 'Monstra']; // nelze odebrat (mají vlastní formuláře a funkce)
 // Položky navigace, jejichž pořadí si DM může přerovnat (klíče musí znát i frontend).
 // Správa hráčů a Kategorie v menu nejsou — jsou to záložky uvnitř Nastavení kampaně.
@@ -73,7 +79,7 @@ const MASTER_PASSWORD = (() => {
   return gen;
 })();
 if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-db.settings = db.settings || { appName: 'Lore master' }; // nastavení aplikace
+db.settings = db.settings || { appName: APP_NAME_DEFAULT }; // nastavení aplikace
 db.notes = db.notes || []; // migrace starších dat
 db.inventory = db.inventory || [];
 db.invNotes = db.invNotes || [];
@@ -669,7 +675,7 @@ function route(method, pattern, handler) {
 
 // veřejné info aplikace (název pro přihlašovací obrazovku a lištu)
 route('GET', '/api/app-info', async (req, res) => {
-  sendJSON(res, 200, { name: (db.settings && db.settings.appName) || 'Lore master' });
+  sendJSON(res, 200, { name: (db.settings && db.settings.appName) || APP_NAME_DEFAULT });
 });
 
 // ================================================================ ADMINISTRACE (za master heslem)
@@ -710,7 +716,7 @@ route('GET', '/api/admin/overview', async (req, res, params, userId) => {
       campaign: (db.campaigns.find(c => c.id === m.campaignId) || {}).name || '?', role: m.role
     }))
   })).sort((a, b) => a.username.localeCompare(b.username, 'cs'));
-  sendJSON(res, 200, { appName: (db.settings || {}).appName || 'Lore master', campaigns, users });
+  sendJSON(res, 200, { appName: (db.settings || {}).appName || APP_NAME_DEFAULT, campaigns, users });
 });
 
 // změna názvu aplikace
@@ -734,7 +740,7 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   const invIds = new Set(db.inventory.filter(e => charIds.has(e.characterId)).map(e => e.id));
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   const backup = {
-    format: 'loremaster-backup', version: 1, exportedAt: new Date().toISOString(),
+    format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(),
     campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null },
     users: [...new Set(db.memberships.filter(m => m.campaignId === cid).map(m => m.userId))]
       .map(uid => { const u = db.users.find(u => u.id === uid); return u ? { id: u.id, username: u.username } : null; }).filter(Boolean),
@@ -769,7 +775,7 @@ route('POST', '/api/admin/import', async (req, res) => {
   const buf = await readBody(req, 80 * 1024 * 1024);
   let backup;
   try { backup = JSON.parse(buf.toString('utf8')); } catch { return sendJSON(res, 400, { error: 'Soubor není platná záloha (JSON).' }); }
-  if (backup.format !== 'loremaster-backup') return sendJSON(res, 400, { error: 'Neznámý formát zálohy.' });
+  if (!BACKUP_FORMATS_IN.includes(backup.format)) return sendJSON(res, 400, { error: 'Neznámý formát zálohy.' });
   const idMap = new Map(); // staré id -> nové id
   const remap = old => { if (old == null) return null; if (!idMap.has(old)) idMap.set(old, nextId()); return idMap.get(old); };
   // uživatelé: spoj podle uživatelského jména (ti, co existují); ostatní se vynechají
@@ -2545,7 +2551,7 @@ const server = http.createServer(async (req, res) => {
     // do index.html doplníme název aplikace do <title> — záložka prohlížeče tak sedí
     // hned od načtení, ještě než se rozběhne JS (a platí i pro záložky/historii)
     if (ext === '.html') {
-      const name = (db.settings && db.settings.appName) || 'Lore master';
+      const name = (db.settings && db.settings.appName) || APP_NAME_DEFAULT;
       const html = fs.readFileSync(filePath, 'utf8')
         .replace(/<title>[\s\S]*?<\/title>/i, `<title>${escHTML(name)}</title>`);
       res.writeHead(200, headers);
