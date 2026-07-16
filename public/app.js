@@ -5130,7 +5130,7 @@ async function invZonePane() {
     <div class="refpane-head">
       <b>📍 ${esc(zone.name)}</b>
       <div style="flex:1"></div>
-      ${dm ? `<button class="small" data-k="spawn" title="Vytvořit nový předmět v této zóně">＋ předmět</button>
+      ${dm ? `<button class="small" data-k="spawn" title="Vybrat více předmětů s počty a vložit je sem najednou">＋ předměty</button>
               <button class="small danger" data-k="zdel" title="Smazat zónu (musí být prázdná)">🗑</button>` : ''}
       <button class="small ghost" data-k="close" title="Zavřít">✕</button>
     </div>
@@ -5143,10 +5143,7 @@ async function invZonePane() {
   for (const it of items) area.appendChild(invTokenEl(it, 44));
   el.querySelector('[data-k=close]').onclick = () => { invUI.zoneOpen = null; invUI.paneMode = null; closeRefPane(); renderInventoryTabsMark(); };
   const sp = el.querySelector('[data-k=spawn]');
-  if (sp) sp.onclick = () => pickArticle(async art => {
-    try { await api(`/api/campaigns/${cid}/inv/instances`, { method: 'POST', body: { articleId: art.id, to: { t: 'zone', zId } } }); invZonePane(); }
-    catch (e) { invToast(e.message); }
-  }, { category: 'Předměty' });
+  if (sp) sp.onclick = () => invSpawnDialog(cid, zId, () => invZonePane());
   const zd = el.querySelector('[data-k=zdel]');
   if (zd) zd.onclick = async () => {
     const n = (invUI.zoneItems || []).length;
@@ -5159,6 +5156,90 @@ async function invZonePane() {
   };
 }
 
+
+/** DM: výběr více předmětů s počty a hromadné vložení do zóny. */
+async function invSpawnDialog(cid, zId, onDone) {
+  let arts = [];
+  try { arts = await api(`/api/campaigns/${cid}/articles?category=${encodeURIComponent('Předměty')}`); }
+  catch (e) { return invToast(e.message); }
+  const sel = new Map(); // articleId -> { id, title, thumb, count }
+  const overlay = h(`<div class="modal-overlay"><div class="modal" style="max-width:520px">
+    <h3 style="margin:0 0 10px">＋ Předměty do zóny</h3>
+    <div class="spawn-sel" data-k="sel"><p class="muted" style="margin:0">Klikáním na seznam níže vyberte předměty — každý klik přidá kus.</p></div>
+    <input placeholder="Filtrovat…" data-k="filter" style="margin-top:10px">
+    <div class="spawn-list" data-k="list" style="margin-top:8px"></div>
+    <div class="confirm-actions" style="margin-top:12px">
+      <button class="secondary" data-k="no">Zrušit</button>
+      <button data-k="yes" disabled>Vložit vše</button>
+    </div>
+  </div></div>`).firstElementChild;
+  document.body.appendChild(overlay);
+  const selBox = overlay.querySelector('[data-k=sel]');
+  const list = overlay.querySelector('[data-k=list]');
+  const filter = overlay.querySelector('[data-k=filter]');
+  const okBtn = overlay.querySelector('[data-k=yes]');
+  const thumbOf = a => (a.thumbId || (a.thumbs && a.thumbs[0])) || null;
+  const total = () => [...sel.values()].reduce((s, x) => s + x.count, 0);
+
+  const drawSel = () => {
+    okBtn.disabled = !sel.size;
+    okBtn.textContent = sel.size ? `Vložit vše (${total()} ks)` : 'Vložit vše';
+    selBox.innerHTML = sel.size ? [...sel.values()].map(x => `
+      <span class="spawn-chip" data-chip="${x.id}">
+        ${x.thumb ? `<img src="${imgUrl(x.thumb)}" alt="">` : '📄'} ${esc(x.title)}
+        <button data-minus="${x.id}" title="Ubrat kus">−</button><b>×${x.count}</b><button data-plus="${x.id}" title="Přidat kus">＋</button>
+        <button data-rm="${x.id}" title="Odebrat z výběru">✕</button>
+      </span>`).join('')
+      : '<p class="muted" style="margin:0">Klikáním na seznam níže vyberte předměty — každý klik přidá kus.</p>';
+    selBox.querySelectorAll('[data-plus]').forEach(b => b.onclick = () => { sel.get(+b.dataset.plus).count++; drawSel(); drawList(); });
+    selBox.querySelectorAll('[data-minus]').forEach(b => b.onclick = () => {
+      const x = sel.get(+b.dataset.minus);
+      if (--x.count <= 0) sel.delete(x.id);
+      drawSel(); drawList();
+    });
+    selBox.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { sel.delete(+b.dataset.rm); drawSel(); drawList(); });
+  };
+  const drawList = () => {
+    const f = filter.value.toLowerCase();
+    list.innerHTML = arts.filter(a => a.title.toLowerCase().includes(f)).map(a => `
+      <button class="item pick-row ${sel.has(a.id) ? 'on' : ''}" data-id="${a.id}">
+        ${thumbOf(a) ? `<img class="pick-thumb" src="${imgUrl(thumbOf(a))}" alt="" loading="lazy">` : '<span class="pick-thumb ph">📄</span>'}
+        <span style="flex:1">${esc(a.title)}</span>
+        ${sel.has(a.id) ? `<span class="tag cat">✓ ×${sel.get(a.id).count}</span>` : ''}
+      </button>`).join('') || '<p class="muted">Nic nenalezeno.</p>';
+    list.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
+      const a = arts.find(x => x.id === +b.dataset.id);
+      const cur = sel.get(a.id);
+      if (cur) cur.count++; else sel.set(a.id, { id: a.id, title: a.title, thumb: thumbOf(a), count: 1 });
+      drawSel(); drawList();
+    });
+  };
+  drawSel(); drawList();
+  filter.oninput = drawList;
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector('[data-k=no]').onclick = () => overlay.remove();
+  okBtn.onclick = async () => {
+    okBtn.disabled = true; okBtn.textContent = 'Vkládám…';
+    const fails = [];
+    for (const x of sel.values()) {
+      try {
+        // stackovatelný předmět jde po plných stopách, ostatní kus po kuse
+        const art = await api(`/api/articles/${x.id}`);
+        const it = (art && art.item) || {};
+        const chunks = [];
+        if (it.stackable) {
+          const max = Math.max(1, it.stackMax || 10);
+          for (let r = x.count; r > 0; r -= max) chunks.push(Math.min(max, r));
+        } else for (let i = 0; i < x.count; i++) chunks.push(1);
+        for (const q of chunks)
+          await api(`/api/campaigns/${cid}/inv/instances`, { method: 'POST', body: { articleId: x.id, qty: q, to: { t: 'zone', zId } } });
+      } catch (e) { fails.push(`${x.title}: ${e.message}`); }
+    }
+    overlay.remove();
+    invToast(fails.length ? `Část se nevložila — ${fails.join(' · ')}` : `Vloženo ${total()} ks.`);
+    if (onDone) onDone();
+  };
+}
 
 /** Detail předmětu v pravém panelu (stejný vzor jako reference). */
 async function invDetail(instId) {
