@@ -4686,8 +4686,10 @@ async function invDetail(instId) {
     ? [...invUI.items, ...(invUI.zoneItems || [])].filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === it.id)
     : [];
   const dm = canEdit();
+  const zoneBack = invUI.zoneOpen && invUI.zones.find(z => z.id === invUI.zoneOpen);
   el.innerHTML = `
     <div class="refpane-head">
+      ${zoneBack ? `<button class="small ghost" data-k="back" title="Zpět na zónu">← 📍 ${esc(zoneBack.name)}</button>` : ''}
       <div style="flex:1"></div>
       <button class="small ghost" data-k="close" title="Zavřít">✕</button>
     </div>
@@ -4752,6 +4754,8 @@ async function invDetail(instId) {
   };
   const done = () => { invRefresh(); back(); };
   el.querySelector('[data-k=close]').onclick = back;
+  const bk = el.querySelector('[data-k=back]');
+  if (bk) bk.onclick = back;
   el.querySelectorAll('[data-open-inst]').forEach(r => r.onclick = () => invDetail(+r.dataset.openInst));
   el.querySelectorAll('[data-take]').forEach(b => b.onclick = async () => {
     if (await invTakeToChar(it, +b.dataset.take)) done();
