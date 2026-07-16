@@ -228,4 +228,13 @@ check_has "hráč vestavěný slot nepřesune" "$X" "error"
 X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":"Makovice"}')
 check_has "vestavěný nejde přejmenovat" "$X" "jen oblast"
 
+echo "== smazání zóny i s předměty (force) =="
+Z2=$(req i_d.jar POST /api/campaigns/$CID/inv/zones '{"name":"Smetiste"}' | grep -o '[0-9]*')
+req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$JAB,\"qty\":2,\"to\":{\"t\":\"zone\",\"zId\":$Z2}}" > /dev/null
+X=$(req i_d.jar DELETE /api/inv/zones/$Z2)
+check_has "bez force se odmítne" "$X" "prázdná"
+req i_d.jar DELETE "/api/inv/zones/$Z2?force=1" > /dev/null
+check_not "zóna zmizela" "$(req i_d.jar GET /api/campaigns/$CID/inv/zones)" "Smetiste"
+check_has "deník: smazání zóny s předměty" "$(req i_d.jar GET /api/campaigns/$CID/inv/log)" "smazal zónu"
+
 echo; echo "🎉 Testy grafického inventáře prošly."

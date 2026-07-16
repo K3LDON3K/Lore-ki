@@ -4665,8 +4665,12 @@ async function invZonePane() {
   }, { category: 'Předměty' });
   const zd = el.querySelector('[data-k=zdel]');
   if (zd) zd.onclick = async () => {
-    if (!await confirmDialog('Smazat zónu? Musí být prázdná.', { title: 'Smazat zónu', ok: 'Smazat', danger: true })) return;
-    try { await api(`/api/inv/zones/${zId}`, { method: 'DELETE' }); invUI.zoneOpen = null; invUI.paneMode = null; renderInventory(); }
+    const n = (invUI.zoneItems || []).length;
+    const msg = n
+      ? `V zóně ${n === 1 ? 'leží 1 předmět' : n < 5 ? `leží ${n} předměty` : `leží ${n} předmětů`} — smažou se NENÁVRATNĚ spolu s ní (včetně obsahu batohů).`
+      : 'Zóna je prázdná, jen se odstraní.';
+    if (!await confirmDialog(msg, { title: 'Smazat zónu', ok: n ? 'Smazat i s předměty' : 'Smazat', danger: true })) return;
+    try { await api(`/api/inv/zones/${zId}${n ? '?force=1' : ''}`, { method: 'DELETE' }); invUI.zoneOpen = null; invUI.paneMode = null; renderInventory(); }
     catch (e) { invToast(e.message); }
   };
 }

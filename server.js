@@ -1902,8 +1902,16 @@ route('DELETE', '/api/inv/zones/:id', async (req, res, params, userId, query) =>
   if (!z) return sendJSON(res, 404, { error: 'Zóna nenalezena.' });
   const viewer = userId && resolveViewer(userId, z.campaignId, query.viewAs);
   if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Zóny spravuje DM.' });
-  if (db.itemInstances.some(i => i.loc && i.loc.t === 'zone' && i.loc.zId === z.id))
-    return sendJSON(res, 400, { error: 'Zóna není prázdná — nejdřív předměty přesuňte nebo smažte.' });
+  const inZone = db.itemInstances.filter(i => i.loc && i.loc.t === 'zone' && i.loc.zId === z.id);
+  if (inZone.length && query.force !== '1')
+    return sendJSON(res, 400, { error: 'Zóna není prázdná — nejdřív předměty přesuňte, nebo smažte zónu i s obsahem.', count: inZone.length });
+  if (inZone.length) {
+    // s obsahem: smazat i předměty UVNITŘ kontejnerů ležících v zóně (nevnořují se → jedna úroveň)
+    const gone = new Set(inZone.map(i => i.id));
+    db.itemInstances = db.itemInstances.filter(i =>
+      !gone.has(i.id) && !(i.loc && i.loc.t === 'grid' && gone.has(i.loc.cId)));
+    invLogAdd(z.campaignId, viewer, `smazal zónu ${z.name} včetně ${inZone.length} předmětů`);
+  }
   db.invZones = db.invZones.filter(x => x.id !== z.id); save(); sseBroadcast(z.campaignId, { inv: 1 });
   sendJSON(res, 200, { ok: true });
 });
