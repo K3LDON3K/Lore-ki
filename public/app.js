@@ -3099,14 +3099,30 @@ async function renderEditor(aid) {
 
         <div class="formsec">
           <h4>📍 Kam jde předmět nasadit</h4>
-          <p class="muted" style="margin:0 0 8px">Vyberte sloty, nebo <b>Kamkoli</b> (kam se vejde kapacitou). <b>Nic nevybráno = předmět nejde nosit</b> — patří jen do batohů, kapes a zón.</p>
-          <div class="pick-group">
-            ${pill('id="iAnywhere"', '🌐 Kamkoli (kam se vejde)', !!it.wearable && !(it.slots || []).length)}
-            ${Object.entries(INV_SLOT_DEFS).map(([k, d]) =>
-              pill(`class="iSlot" value="${k}"`, `${d.l} (${d.cap})`, (it.slots || []).includes(k))).join('')}
-            ${((state.campaign && state.campaign.customSlots) || []).map(s =>
-              pill(`class="iSlot" value="${s.key}"`, `${esc(s.label)} (${s.cap})`, (it.slots || []).includes(s.key))).join('')}
-          </div>
+          <p class="muted" style="margin:0 0 8px">Vyberte sloty, nebo <b>Kamkoli</b>. Velikost se na těle neřeší — tvar hraje roli až v batozích. <b>Nic nevybráno = předmět nejde nosit.</b></p>
+          <input id="iSlotFilter" placeholder="🔍 Najít slot… (např. prsten)" style="margin-bottom:8px; max-width:280px">
+          <div class="pick-group" style="margin-bottom:6px">${pill('id="iAnywhere"', '🌐 Kamkoli', !!it.wearable && !(it.slots || []).length)}</div>
+          ${(() => {
+            const customs = (state.campaign && state.campaign.customSlots) || [];
+            const grps = INV_GROUPS.map(g => ({
+              label: g.label,
+              items: g.slots.map(k => ({ key: k, label: INV_SLOT_DEFS[k].l }))
+                .concat(customs.filter(c => (c.group || 'Další sloty') === g.label).map(c => ({ key: c.key, label: c.label })))
+            }));
+            for (const c of customs) {
+              const gname = c.group || 'Další sloty';
+              if (INV_GROUPS.some(g => g.label === gname)) continue;
+              let g = grps.find(x => x.label === gname);
+              if (!g) { g = { label: gname, items: [] }; grps.push(g); }
+              g.items.push({ key: c.key, label: c.label });
+            }
+            return grps.filter(g => g.items.length).map(g => `
+              <div class="slotgrp" data-grp>
+                <div class="inv-group-label">${esc(g.label)}</div>
+                <div class="pick-group">${g.items.map(s =>
+                  pill(`class="iSlot" value="${s.key}"`, esc(s.label), (it.slots || []).includes(s.key))).join('')}</div>
+              </div>`).join('');
+          })()}
         </div>
 
         <div class="formsec">
@@ -3124,7 +3140,7 @@ async function renderEditor(aid) {
         <div class="formsec">
           <h4>❓ Identifikace a popisy</h4>
           <p class="muted" style="margin:0 0 8px">Neidentifikovaný kus ukazuje hráči jen <b>obecný název</b> a <b>veřejný popis</b>. Pravé jméno (název článku) a tajný popis odhalí až identifikace od DM.</p>
-          <div class="pick-group" style="margin-bottom:8px">${pill('id="iIdentDef"', 'nové kusy jsou rovnou identifikované', !!it.identifiedDefault)}</div>
+          <div class="pick-group" style="margin-bottom:8px">${pill('id="iIdentDef"', 'nové kusy jsou rovnou identifikované', it.identifiedDefault === undefined ? true : !!it.identifiedDefault)}</div>
           <label style="margin-top:4px">Obecný název (neidentifikováno)</label>
           <input id="iUnident" placeholder="např. Tajemný meč" value="${esc(it.unidentifiedName || '')}">
           <label>Veřejný popis (vidí každý držitel)</label>
@@ -3139,10 +3155,6 @@ async function renderEditor(aid) {
           <div id="iContWrap" style="${it.container ? '' : 'display:none'}; margin-top:8px">
             <p class="muted" style="margin:0 0 6px">Klikáním nakreslete tvar. Každé kliknutí přepne políčko: prázdné → 🟢 volná akce → 🟡 akce → 🔴 celé kolo → prázdné. Poloha na plátně nehraje roli — tvar se sám přisune k okraji.</p>
             <div id="iContGrid" class="contgrid-edit"></div>
-            <div style="display:flex; gap:12px; align-items:center; margin-top:10px">
-              <label style="margin:0">Kolik políček zabírá na slotu postavy</label>
-              <input id="iBodySize" type="number" min="1" max="4" value="${num(it.bodySize, 4)}" style="width:70px">
-            </div>
           </div>
         </div>`;
         })() : ''}
@@ -3348,6 +3360,20 @@ async function renderEditor(aid) {
       drawGrid();
       const isCont = $app.querySelector('#iIsCont');
       if (isCont) isCont.onchange = () => { $app.querySelector('#iContWrap').style.display = isCont.checked ? '' : 'none'; };
+      // hledání slotu: filtruje pilulky, prázdné oblasti se schovají
+      const slotFilter = $app.querySelector('#iSlotFilter');
+      if (slotFilter) slotFilter.oninput = () => {
+        const q = slotFilter.value.trim().toLowerCase();
+        $app.querySelectorAll('.slotgrp').forEach(grp => {
+          let any = false;
+          grp.querySelectorAll('.pick-toggle').forEach(p => {
+            const hit = !q || p.textContent.toLowerCase().includes(q);
+            p.style.display = hit ? '' : 'none';
+            if (hit) any = true;
+          });
+          grp.style.display = any ? '' : 'none';
+        });
+      };
       // „Kamkoli“ a výběr konkrétních slotů se vylučují
       const anyEl = $app.querySelector('#iAnywhere');
       const syncPill = el => { const l = el.closest('.pick-toggle'); if (l) l.classList.toggle('on', el.checked); };
@@ -3377,7 +3403,6 @@ async function renderEditor(aid) {
           stackable: chk('iStackable'), stackMax: parseInt(val('iStackMax', 10), 10) || 10,
           noDrop: chk('iNoDrop'), identifiedDefault: chk('iIdentDef'),
           unidentifiedName: val('iUnident', ''), publicText: val('iPublic', ''), secretText: val('iSecret', ''),
-          bodySize: parseInt(val('iBodySize', 4), 10) || 4,
           slots: chk('iAnywhere') ? [] : [...$app.querySelectorAll('.iSlot:checked')].map(x => x.value),
           container: cont && cont.cells.length ? cont : null
         };
@@ -4126,8 +4151,7 @@ function invMarkTargets(it, rot, offX = 0, offY = 0) {
   document.querySelectorAll('[data-drop-slot]').forEach(el => {
     const key = el.dataset.dropSlot, chId = +el.dataset.char;
     let ok = !!it.wearable
-      && !(it.slots && it.slots.length && !it.slots.includes(key))
-      && (caps[key] || 0) >= it.bodyCells;
+      && !(it.slots && it.slots.length && !it.slots.includes(key));
     if (ok && it.twoHanded && !['handR', 'handL'].includes(key)) ok = false;
     if (ok) {
       const other = key === 'handR' ? 'handL' : key === 'handL' ? 'handR' : null;
@@ -4258,7 +4282,7 @@ async function invTakeToChar(it, chId) {
     let order = ['handR', 'handL', 'back', 'belt', 'torso', 'cloak', 'pants', 'head', 'neck', 'boots', 'gloves', 'forearm', 'wristR', 'wristL', 'ring1', 'ring2', 'ring3', 'ring4',
       ...(data.customSlots || []).map(s => s.key)];
     if (it.slots && it.slots.length) order = order.filter(sl => it.slots.includes(sl)); // předmět s vyhrazenými sloty
-    for (const slot of order.filter(sl => !used.has(sl) && (caps[sl] || 0) >= it.bodyCells)) {
+    for (const slot of order.filter(sl => !used.has(sl) && caps[sl])) {
       try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: { t: 'slot', charId: chId, slot } } }); return true; }
       catch (e) { lastErr = e; } // např. obouruční pravidlo — zkusí se další slot
     }
@@ -4324,6 +4348,15 @@ function invAttachDrag(el, it) {
         img.classList.toggle('rot90', !!rot);
         if (rot) { img.style.width = (h0 * cell) + 'px'; img.style.height = (w * cell) + 'px'; }
         else { img.style.width = ''; img.style.height = ''; }
+      }
+      // obrys skutečného tvaru (u kříže je vidět kříž, ne jen obdélník obrázku)
+      ghost.querySelectorAll('.ghost-cell').forEach(x => x.remove());
+      for (const p of invPlacedCells(it, 0, 0, rot)) {
+        const d = document.createElement('div');
+        d.className = 'ghost-cell';
+        d.style.left = (p.x * cell) + 'px'; d.style.top = (p.y * cell) + 'px';
+        d.style.width = cell + 'px'; d.style.height = cell + 'px';
+        ghost.appendChild(d);
       }
     };
     const clearHl = () => document.querySelectorAll('.drop-ok').forEach(x => x.classList.remove('drop-ok'));
@@ -4480,7 +4513,7 @@ async function invDrawBody() {
       // šířka i výška rostou s kapacitou — velikost slotu je vidět na první pohled
       slot.className = 'inv-slot2 cap' + Math.max(1, Math.min(4, cap));
       slot.dataset.dropSlot = key; slot.dataset.char = chId;
-      slot.innerHTML = `<span class="sl-name" title="${esc(label)} — kapacita ${cap}">${esc(label)} <span class="sl-cap">(${cap})</span>${custom && dm ? `<a class="sl-edit" data-slotedit="${key}" title="Upravit slot (název, velikost, oblast)">✎</a><a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
+      slot.innerHTML = `<span class="sl-name" title="${esc(label)}">${esc(label)}${custom && dm ? `<a class="sl-edit" data-slotedit="${key}" title="Upravit slot (název, oblast)">✎</a><a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
       const it = data.items.find(i => i.loc && i.loc.t === 'slot' && i.loc.charId === chId && i.loc.slot === key);
       if (it) { const tok = invTokenEl(it, 52, true); tok.classList.add('fit'); slot.querySelector('.sl-body').appendChild(tok); slot.classList.add('filled'); }
       return slot;
@@ -4745,8 +4778,6 @@ function invNewSlotDialog(groups, edit = null) {
     <p class="muted" style="margin-top:0">${edit ? 'Změna platí pro všechny postavy v kampani.' : 'Slot se objeví u <b>všech postav v kampani</b>.'}</p>
     <label>Název slotu</label>
     <input data-k="name" placeholder="např. Oči" value="${edit ? esc(edit.label) : ''}">
-    <label>Velikost (kapacita v políčkách)</label>
-    <select data-k="cap" style="width:auto">${[1, 2, 3, 4].map(n => `<option value="${n}" ${edit && edit.cap === n ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <label>Umístění (oblast)</label>
     <select data-k="group" style="width:auto">
       ${groups.map(g => `<option value="${esc(g)}" ${edit && (edit.group || 'Další sloty') === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}
@@ -4770,7 +4801,7 @@ function invNewSlotDialog(groups, edit = null) {
     const group = q('group').value === '__new' ? q('newgroup').value.trim() : q('group').value;
     if (!group) { q('err').textContent = 'Zadejte název oblasti.'; return; }
     try {
-      const body = { label, cap: parseInt(q('cap').value, 10), group };
+      const body = { label, group };
       if (edit) await api(`/api/campaigns/${state.campaign.id}/inv/slots/${edit.key}`, { method: 'PUT', body });
       else await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body });
       overlay.remove(); invDrawBody();

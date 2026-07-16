@@ -57,8 +57,9 @@ SID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$STIT,\
 echo "✅ OK: štít 2×2 se vešel do ruky (kapacitní pravidlo)"
 X=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$STIT,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"handL\"}}")
 check_has "obsazený slot odmítne" "$X" "obsazen"
-X=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$STIT,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"head\"}}")
-check_has "štít na hlavu nejde (kapacita)" "$X" "nevejde"
+SH2=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$STIT,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"head\"}}" | grep -o '[0-9]*')
+[ -n "$SH2" ] && echo "✅ OK: velikost se na těle neřeší — štít jde i na hlavu (rozhodují povolené sloty)" || { echo "❌ štít na hlavu neprošel"; exit 1; }
+req i_d.jar DELETE /api/inv/instances/$SH2 > /dev/null
 OID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$OBOU,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
 X=$(req i_h1.jar PUT "/api/inv/instances/$OID/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"handR\"}}")
 check_has "obouruční nejde: druhá ruka drží štít" "$X" "error"

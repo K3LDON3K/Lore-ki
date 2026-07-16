@@ -1793,8 +1793,8 @@ function placeError(inst, to, rot, viewer) {
     if (!ch || ch.campaignId !== inst.campaignId) return 'Postava nenalezena.';
     if (!viewer.isDM && ch.userId !== viewer.userId) return 'Cizí postava.';
     if (!m.wearable) return 'Předmět není nositelný — patří do batohu nebo kapsy.';
+    // velikost se na těle neřeší — rozhoduje jen seznam povolených slotů u předmětu
     if (Array.isArray(m.slots) && m.slots.length && !m.slots.includes(to.slot)) return 'Do tohoto slotu předmět nepatří.';
-    if (instBodyCells(inst) > caps[to.slot]) return 'Do tohoto slotu se předmět nevejde.';
     const taken = db.itemInstances.find(i => i.id !== inst.id && i.loc && i.loc.t === 'slot' && i.loc.charId === ch.id && i.loc.slot === to.slot);
     if (taken) return 'Slot je obsazený.';
     const other = HANDS.find(h => h !== to.slot);
