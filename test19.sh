@@ -218,4 +218,14 @@ check_has "zmenšení kapacity obsazeného slotu odmítnuto" "$X" "nelze zmenši
 X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"group":"Ruce"}')
 check_has "hráč slot neupraví" "$X" "error"
 
+echo "== přesun vestavěného slotu do jiné oblasti =="
+req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"group":"Doplňky"}' > /dev/null
+check_has "override uložen" "$(req i_h1.jar GET /api/inv/char/$BAR)" '"head":"Doplňky"'
+X=$(req i_d.jar DELETE /api/campaigns/$CID/inv/slots/head)
+check_has "vestavěný slot nejde smazat" "$X" "nejde smazat"
+X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/head '{"group":"Ruce"}')
+check_has "hráč vestavěný slot nepřesune" "$X" "error"
+X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":"Makovice"}')
+check_has "vestavěný nejde přejmenovat" "$X" "jen oblast"
+
 echo; echo "🎉 Testy grafického inventáře prošly."

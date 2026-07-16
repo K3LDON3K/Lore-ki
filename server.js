@@ -750,7 +750,7 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   const backup = {
     format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(),
-    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [] },
+    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [], slotOverrides: camp.slotOverrides || {} },
     users: [...new Set(db.memberships.filter(m => m.campaignId === cid).map(m => m.userId))]
       .map(uid => { const u = db.users.find(u => u.id === uid); return u ? { id: u.id, username: u.username } : null; }).filter(Boolean),
     memberships: db.memberships.filter(m => m.campaignId === cid),
@@ -792,7 +792,7 @@ route('POST', '/api/admin/import', async (req, res) => {
   (backup.users || []).forEach(bu => { const u = db.users.find(x => x.username.toLowerCase() === String(bu.username).toLowerCase()); if (u) userMap.set(bu.id, u.id); });
   const mu = old => userMap.has(old) ? userMap.get(old) : null;
 
-  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [] };
+  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [], slotOverrides: (backup.campaign && backup.campaign.slotOverrides) || {} };
   db.campaigns.push(camp);
   for (const s of SYSTEM_CATEGORIES) if (!camp.categories.includes(s)) camp.categories.push(s);
 
@@ -958,7 +958,7 @@ route('GET', '/api/campaigns', async (req, res, params, userId) => {
   if (!userId) return sendJSON(res, 401, { error: 'Nepřihlášen' });
   const rows = db.memberships.filter(m => m.userId === userId).map(m => {
     const c = db.campaigns.find(c => c.id === m.campaignId);
-    return c ? { id: c.id, name: c.name, role: m.role, defaultCharId: m.defaultCharId || null, description: c.description || '', iconImageId: c.iconImageId || null, homeArticleId: c.homeArticleId || null, navOrder: navOrderOf(c), customSlots: c.customSlots || [] } : null;
+    return c ? { id: c.id, name: c.name, role: m.role, defaultCharId: m.defaultCharId || null, description: c.description || '', iconImageId: c.iconImageId || null, homeArticleId: c.homeArticleId || null, navOrder: navOrderOf(c), customSlots: c.customSlots || [], slotOverrides: c.slotOverrides || {} } : null;
   }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
   sendJSON(res, 200, rows);
 });
@@ -1871,6 +1871,7 @@ route('GET', '/api/inv/char/:chId', async (req, res, params, userId, query) => {
   sendJSON(res, 200, {
     characterId: ch.id, characterName: ch.name,
     slots: slotCapsFor(camp), customSlots: (camp && camp.customSlots) || [],
+    slotOverrides: (camp && camp.slotOverrides) || {},
     items: items.map(i => instView(i, viewer))
   });
 });
@@ -2069,9 +2070,18 @@ route('PUT', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, user
   const viewer = userId && resolveViewer(userId, cid, query.viewAs);
   if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Sloty spravuje DM.' });
   const camp = db.campaigns.find(c => c.id === cid);
-  const s = (camp.customSlots || []).find(x => x.key === String(params.key));
-  if (!s) return sendJSON(res, 404, { error: 'Slot nenalezen.' });
+  const key = String(params.key);
+  const s = (camp.customSlots || []).find(x => x.key === key);
   const body = await readJSONBody(req);
+  if (!s) {
+    // vestavěný slot: lze měnit jen OBLAST (uloží se jako override kampaně)
+    if (!BODY_SLOTS[key]) return sendJSON(res, 404, { error: 'Slot nenalezen.' });
+    if (body.group === undefined || !String(body.group).trim()) return sendJSON(res, 400, { error: 'U vestavěného slotu lze změnit jen oblast.' });
+    camp.slotOverrides = camp.slotOverrides || {};
+    camp.slotOverrides[key] = String(body.group).trim().slice(0, 30);
+    save(); sseBroadcast(cid, { inv: 1 });
+    return sendJSON(res, 200, { ok: true });
+  }
   if (body.label !== undefined && String(body.label).trim()) s.label = String(body.label).trim().slice(0, 30);
   if (body.group !== undefined && String(body.group).trim()) s.group = String(body.group).trim().slice(0, 30);
   if (body.cap !== undefined) {
@@ -2090,6 +2100,7 @@ route('DELETE', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, u
   if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Sloty spravuje DM.' });
   const camp = db.campaigns.find(c => c.id === cid);
   const key = String(params.key);
+  if (BODY_SLOTS[key]) return sendJSON(res, 400, { error: 'Vestavěný slot nejde smazat — lze ho jen přesunout do jiné oblasti.' });
   if (!(camp.customSlots || []).some(s => s.key === key)) return sendJSON(res, 404, { error: 'Slot nenalezen.' });
   if (db.itemInstances.some(i => i.campaignId === cid && i.loc && i.loc.t === 'slot' && i.loc.slot === key))
     return sendJSON(res, 400, { error: 'Ve slotu jsou předměty — nejdřív je přesuňte.' });

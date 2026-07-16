@@ -1069,3 +1069,8 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 
 /* duch tažení: absolute + pageX/Y = drží se kurzoru i po odscrollování stránky */
 .inv-ghost { position: absolute !important; }
+
+/* tvarovaný token: ukazatel reaguje jen na políčka tvaru, zbytek obálky je průchozí */
+.inv-token.shaped { pointer-events: none; }
+.inv-token.shaped .tk-hit { position: absolute; pointer-events: auto; touch-action: none; cursor: grab; }
+.inv-ghost .tk-hit { pointer-events: none; }

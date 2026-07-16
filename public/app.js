@@ -3104,11 +3104,18 @@ async function renderEditor(aid) {
           <div class="pick-group" style="margin-bottom:6px">${pill('id="iAnywhere"', '🌐 Kamkoli', !!it.wearable && !(it.slots || []).length)}</div>
           ${(() => {
             const customs = (state.campaign && state.campaign.customSlots) || [];
+            const ovr = (state.campaign && state.campaign.slotOverrides) || {};
+            const bg = k => ovr[k] || (INV_GROUPS.find(g => g.slots.includes(k)) || {}).label;
             const grps = INV_GROUPS.map(g => ({
               label: g.label,
-              items: g.slots.map(k => ({ key: k, label: INV_SLOT_DEFS[k].l }))
+              items: INV_GROUPS.flatMap(x => x.slots).filter(k => bg(k) === g.label).map(k => ({ key: k, label: INV_SLOT_DEFS[k].l }))
                 .concat(customs.filter(c => (c.group || 'Další sloty') === g.label).map(c => ({ key: c.key, label: c.label })))
             }));
+            for (const g of [...new Set(Object.values(ovr))].filter(x => !INV_GROUPS.some(y => y.label === x))) {
+              let gg = grps.find(x => x.label === g);
+              if (!gg) { gg = { label: g, items: [] }; grps.push(gg); }
+              gg.items.push(...INV_GROUPS.flatMap(x => x.slots).filter(k => bg(k) === g).map(k => ({ key: k, label: INV_SLOT_DEFS[k].l })));
+            }
             for (const c of customs) {
               const gname = c.group || 'Další sloty';
               if (INV_GROUPS.some(g => g.label === gname)) continue;
@@ -4089,6 +4096,7 @@ function invPlacedCells(it, X, Y, rot) {
   })();
   return cells.map(c => rot ? { x: X + (it.h - 1 - c.y), y: Y + c.x } : { x: X + c.x, y: Y + c.y });
 }
+function INV_SLOT_LABEL_RO(key) { return (INV_SLOT_DEFS[key] || {}).l || key; }
 function invSlotLabel(key) {
   if (INV_SLOT_DEFS[key]) return INV_SLOT_DEFS[key].l;
   const cs = ((state.campaign && state.campaign.customSlots) || []).find(s => s.key === key);
@@ -4121,6 +4129,19 @@ function invTokenEl(it, cell, fit = false) {
     ${!it.identified ? '<span class="tk-unident" title="Neidentifikováno">?</span>' : ''}
     ${it.stackable && it.qty > 1 ? `<span class="tk-qty">×${it.qty}</span>` : ''}
     ${it.broken ? '<span class="tk-broken">✕</span>' : ''}`;
+  // tvarovaný token (kříž, L…): myš chytají jen skutečná políčka tvaru — prázdné rohy
+  // obálky propustí kliknutí na předmět POD nimi (jinak by malý předmět v rohu nešel vzít)
+  const cellsArr = it.shape && it.shape.length ? it.shape : null;
+  if (!fit && cellsArr && cellsArr.length < it.w * it.h) {
+    el.classList.add('shaped');
+    for (const p of invPlacedCells(it, 0, 0, it.rot)) {
+      const hit = document.createElement('div');
+      hit.className = 'tk-hit';
+      hit.style.left = (p.x * cell) + 'px'; hit.style.top = (p.y * cell) + 'px';
+      hit.style.width = cell + 'px'; hit.style.height = cell + 'px';
+      el.appendChild(hit);
+    }
+  }
   invAttachDrag(el, it);
   // pravé tlačítko: rychlé akce bez otevírání detailu
   el.addEventListener('contextmenu', e => {
@@ -4513,15 +4534,20 @@ async function invDrawBody() {
       // šířka i výška rostou s kapacitou — velikost slotu je vidět na první pohled
       slot.className = 'inv-slot2 cap' + Math.max(1, Math.min(4, cap));
       slot.dataset.dropSlot = key; slot.dataset.char = chId;
-      slot.innerHTML = `<span class="sl-name" title="${esc(label)}">${esc(label)}${custom && dm ? `<a class="sl-edit" data-slotedit="${key}" title="Upravit slot (název, oblast)">✎</a><a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
+      slot.innerHTML = `<span class="sl-name" title="${esc(label)}">${esc(label)}${dm ? `<a class="sl-edit" data-slotedit="${key}" title="${custom ? 'Upravit slot (název, oblast)' : 'Přesunout slot do jiné oblasti'}">✎</a>` : ''}${custom && dm ? `<a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
       const it = data.items.find(i => i.loc && i.loc.t === 'slot' && i.loc.charId === chId && i.loc.slot === key);
       if (it) { const tok = invTokenEl(it, 52, true); tok.classList.add('fit'); slot.querySelector('.sl-body').appendChild(tok); slot.classList.add('filled'); }
       return slot;
     };
     const custom = data.customSlots || [];
-    // vlastní skupiny (oblasti): vestavěné + ty, které si DM vytvořil názvem u slotu
-    const customGroups = [...new Set(custom.map(s => s.group || 'Další sloty'))]
-      .filter(g => !INV_GROUPS.some(x => x.label === g));
+    const overrides = data.slotOverrides || {};
+    // efektivní oblast vestavěného slotu: override kampaně, jinak jeho výchozí skupina
+    const builtinGroup = key => overrides[key] || (INV_GROUPS.find(g => g.slots.includes(key)) || {}).label;
+    // vlastní skupiny (oblasti): z vlastních slotů i z přesunutých vestavěných
+    const customGroups = [...new Set([
+      ...custom.map(s => s.group || 'Další sloty'),
+      ...Object.values(overrides)
+    ])].filter(g => !INV_GROUPS.some(x => x.label === g));
     const mkRow = (label, keysHtmlFn) => {
       const row = document.createElement('div');
       row.className = 'inv-group';
@@ -4533,19 +4559,19 @@ async function invDrawBody() {
       doll.appendChild(row);
       return rowSlots;
     };
+    const allBuiltins = INV_GROUPS.flatMap(g => g.slots);
+    const rowFor = (label, rowSlots) => {
+      for (const key of allBuiltins.filter(k => builtinGroup(k) === label))
+        rowSlots.appendChild(mkSlot(key, INV_SLOT_DEFS[key].l, data.slots[key] || 1, false));
+      for (const s of custom.filter(c => (c.group || 'Další sloty') === label))
+        rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
+    };
     for (const grp of INV_GROUPS) {
-      mkRow(grp.label, rowSlots => {
-        for (const key of grp.slots) rowSlots.appendChild(mkSlot(key, INV_SLOT_DEFS[key].l, data.slots[key] || 1, false));
-        for (const s of custom.filter(c => (c.group || 'Další sloty') === grp.label))
-          rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
-      });
+      // skupina se vykreslí, jen když v ní něco zbylo
+      if (allBuiltins.some(k => builtinGroup(k) === grp.label) || custom.some(c => (c.group || 'Další sloty') === grp.label))
+        mkRow(grp.label, rowSlots => rowFor(grp.label, rowSlots));
     }
-    for (const g of customGroups) {
-      mkRow(g, rowSlots => {
-        for (const s of custom.filter(c => (c.group || 'Další sloty') === g))
-          rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
-      });
-    }
+    for (const g of customGroups) mkRow(g, rowSlots => rowFor(g, rowSlots));
     if (dm) { // ＋ slot: dialog s názvem, velikostí a umístěním (včetně nové oblasti)
       const add = document.createElement('button');
       add.className = 'inv-slot-add';
@@ -4584,8 +4610,11 @@ async function invDrawBody() {
     body.appendChild(main);
     body.querySelectorAll('[data-slotedit]').forEach(x => x.onclick = (e) => {
       e.stopPropagation();
-      const s = (data.customSlots || []).find(c => c.key === x.dataset.slotedit);
-      if (s) invNewSlotDialog([...INV_GROUPS.map(g => g.label), ...customGroups], s);
+      const key = x.dataset.slotedit;
+      const groupsAll = [...INV_GROUPS.map(g => g.label), ...customGroups];
+      const s = (data.customSlots || []).find(c => c.key === key);
+      if (s) invNewSlotDialog(groupsAll, s);
+      else invNewSlotDialog(groupsAll, { key, label: INV_SLOT_LABEL_RO(key), cap: 1, group: builtinGroup(key), builtin: true });
     });
     body.querySelectorAll('[data-slotdel]').forEach(x => x.onclick = async (e) => {
       e.stopPropagation();
@@ -4774,10 +4803,10 @@ async function invDetailReload(instId) {
 /** Dialog pro nový slot postavy: název, velikost, umístění (existující nebo nová oblast). */
 function invNewSlotDialog(groups, edit = null) {
   const overlay = h(`<div class="modal-overlay"><div class="modal">
-    <h3 style="margin:0 0 10px">${edit ? '✎ Upravit slot' : '＋ Nový slot postavy'}</h3>
-    <p class="muted" style="margin-top:0">${edit ? 'Změna platí pro všechny postavy v kampani.' : 'Slot se objeví u <b>všech postav v kampani</b>.'}</p>
+    <h3 style="margin:0 0 10px">${edit ? (edit.builtin ? '✎ Přesunout slot' : '✎ Upravit slot') : '＋ Nový slot postavy'}</h3>
+    <p class="muted" style="margin-top:0">${edit ? 'Změna platí pro všechny postavy v kampani.' : 'Slot se objeví u <b>všech postav v kampani</b>.'}${edit && edit.builtin ? ' U vestavěného slotu lze změnit jen oblast.' : ''}</p>
     <label>Název slotu</label>
-    <input data-k="name" placeholder="např. Oči" value="${edit ? esc(edit.label) : ''}">
+    <input data-k="name" placeholder="např. Oči" value="${edit ? esc(edit.label) : ''}" ${edit && edit.builtin ? 'disabled' : ''}>
     <label>Umístění (oblast)</label>
     <select data-k="group" style="width:auto">
       ${groups.map(g => `<option value="${esc(g)}" ${edit && (edit.group || 'Další sloty') === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}
@@ -4801,7 +4830,7 @@ function invNewSlotDialog(groups, edit = null) {
     const group = q('group').value === '__new' ? q('newgroup').value.trim() : q('group').value;
     if (!group) { q('err').textContent = 'Zadejte název oblasti.'; return; }
     try {
-      const body = { label, group };
+      const body = edit && edit.builtin ? { group } : { label, group };
       if (edit) await api(`/api/campaigns/${state.campaign.id}/inv/slots/${edit.key}`, { method: 'PUT', body });
       else await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body });
       overlay.remove(); invDrawBody();
