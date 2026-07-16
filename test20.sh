@@ -37,8 +37,10 @@ X=$(req r_a.jar POST /api/blocks/$BID/reveal "{\"toCharId\":$BOR}")
 check_has "žádost přijata jako čekající" "$X" '"pending":true'
 V_B=$(req r_b.jar GET /api/articles/$ART)
 check_not "před schválením Borek stále nevidí" "$V_B" "TajemstviRuny"
+V_A=$(req r_a.jar GET /api/articles/$ART)
+check_has "žadatel u bloku vidí podanou žádost (jméno cíle)" "$V_A" '"pendingReveals":\["Borek"\]'
 X=$(req r_a.jar POST /api/blocks/$BID/reveal "{\"toCharId\":$BOR}")
-check_has "duplicitní žádost odmítnuta" "$X" "čeká"
+check_has "duplicitní žádost je idempotentní (pending)" "$X" '"pending":true'
 X=$(req r_a.jar POST /api/blocks/$BID/reveal "{\"toCharId\":$ANI}")
 check_has "prozrazení sám sobě odmítnuto" "$X" "error"
 
@@ -60,7 +62,9 @@ check_has "po schválení Borek tajemství vidí" "$V_B" "TajemstviRuny"
 L=$(req r_d.jar GET /api/campaigns/$CID/reveals)
 check_has "žádost zmizela ze seznamu" "$L" '"requests":\[\]'
 X=$(req r_a.jar POST /api/blocks/$BID/reveal "{\"toCharId\":$BOR}")
-check_has "znovu prozradit nejde — už vidí" "$X" "už informaci vidí"
+check_has "cíl už informaci ví → schváleno automaticky" "$X" '"approved":true'
+L=$(req r_d.jar GET /api/campaigns/$CID/reveals)
+check_has "automatické schválení nezanechá žádost" "$L" '"requests":\[\]'
 
 echo "== zamítnutí =="
 req r_d.jar PUT /api/articles/$ART "{\"title\":\"Prokletá dýka\",\"blocks\":[

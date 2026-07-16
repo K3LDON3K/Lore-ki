@@ -1153,3 +1153,7 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .reveal-req-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .reveal-req-quote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--accent); background: var(--panel2); border-radius: 0 8px 8px 0; font-size: 13px; }
 .reveal-req-actions { display: flex; gap: 8px; }
+
+/* štítek podané žádosti o prozrazení */
+.reveal-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.reveal-pending { font-size: 11px; color: var(--muted); font-style: italic; }

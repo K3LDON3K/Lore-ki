@@ -444,11 +444,14 @@ function visibleBlocksForViewer(articleId, viewer) {
   const art = db.articles.find(a => a.id === articleId);
   const activeChar = art ? userCharIds(art.campaignId, viewer.userId)[0] : null;
   const canReveal = b => !!(activeChar && b.visibility === 'custom' && (b.visibleTo || []).includes(activeChar));
+  const myPending = b => !activeChar ? [] : db.reveals
+    .filter(r => r.blockId === b.id && r.fromCharId === activeChar)
+    .map(r => (db.characters.find(ch => ch.id === r.toCharId) || {}).name || '?');
   return blocks
     .filter(b => blockAllowedForPlayer(b, viewer.userId))
     .map(b => owned
-      ? { id: b.id, type: b.type, content: b.content, visibility: b.visibility, visibleTo: b.visibleTo || [], canReveal: canReveal(b) } // vlastník metadata potřebuje k editaci
-      : { id: b.id, type: b.type, content: b.content, canReveal: canReveal(b) }); // ostatním hráčům se metadata neposílají
+      ? { id: b.id, type: b.type, content: b.content, visibility: b.visibility, visibleTo: b.visibleTo || [], canReveal: canReveal(b), pendingReveals: myPending(b) } // vlastník metadata potřebuje k editaci
+      : { id: b.id, type: b.type, content: b.content, canReveal: canReveal(b), pendingReveals: myPending(b) }); // ostatním hráčům se metadata neposílají
 }
 
 function blockText(b) {
@@ -2221,9 +2224,9 @@ route('POST', '/api/blocks/:bid/reveal', async (req, res, params, userId, query)
   const toChar = db.characters.find(ch => ch.id === toCharId && ch.campaignId === a.campaignId);
   if (!toChar) return sendJSON(res, 400, { error: 'Cílová postava nenalezena.' });
   if (toCharId === fromCharId) return sendJSON(res, 400, { error: 'Postava tuto informaci už zná.' });
-  if ((b.visibleTo || []).includes(toCharId)) return sendJSON(res, 400, { error: 'Tato postava už informaci vidí.' });
+  if ((b.visibleTo || []).includes(toCharId)) return sendJSON(res, 200, { approved: true }); // už ví → schváleno automaticky
   if (db.reveals.some(r => r.blockId === b.id && r.toCharId === toCharId))
-    return sendJSON(res, 400, { error: 'Žádost už čeká na schválení DM.' });
+    return sendJSON(res, 200, { pending: true }); // táž žádost už čeká — idempotentní
   const camp = db.campaigns.find(c => c.id === a.campaignId);
   if (camp && camp.autoReveal) {
     b.visibleTo = [...(b.visibleTo || []), toCharId];

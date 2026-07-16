@@ -2276,7 +2276,9 @@ function renderBlockHTML(b, owned = false) {
 /** Tlačítko „prozradit informaci“ — jen pro hráče u bloků, které jeho postava vidí jmenovitě. */
 function revealBtnHTML(b) {
   if (!b.canReveal || canEdit()) return '';
-  return `<div class="reveal-row"><button class="small ghost" data-reveal="${b.id}" title="Vaše postava tuto informaci zná jmenovitě — může ji prozradit jiné postavě (schvaluje DM)">🤫 Prozradit jiné postavě…</button></div>`;
+  const pend = (b.pendingReveals || []).length
+    ? `<span class="reveal-pending" title="Žádost o prozrazení čeká na schválení DM">⏳ žádost o prozrazení podána: ${b.pendingReveals.map(esc).join(', ')}</span>` : '';
+  return `<div class="reveal-row"><button class="small ghost" data-reveal="${b.id}" title="Vaše postava tuto informaci zná jmenovitě — může ji prozradit jiné postavě (schvaluje DM)">🤫 Prozradit jiné postavě…</button>${pend}</div>`;
 }
 /** Výběr cílové postavy a odeslání žádosti. */
 async function revealDialog(blockId) {
@@ -2286,21 +2288,37 @@ async function revealDialog(blockId) {
     closeCtxMenu();
     const overlay = h(`<div class="modal-overlay"><div class="modal confirm-modal" role="dialog" aria-modal="true">
       <div class="confirm-head"><span class="confirm-icon">🤫</span><h3>Prozradit informaci</h3></div>
-      <div class="confirm-msg">Komu chce vaše postava tuto informaci prozradit? Pokud DM nemá zapnuté automatické schvalování, informace se zpřístupní až po jeho souhlasu.</div>
-      <div class="zone-pick">${others.map(c => `<button class="secondary" data-ch="${c.id}">🎭 ${esc(c.name)}</button>`).join('')}</div>
-      <div class="confirm-actions"><button class="secondary" data-k="no">Zrušit</button></div>
+      <div class="confirm-msg">Komu chce vaše postava tuto informaci prozradit? Lze vybrat víc postav. Pokud DM nemá zapnuté automatické schvalování, informace se zpřístupní až po jeho souhlasu.</div>
+      <div class="zone-pick">${others.map(c => `<label class="pick-toggle"><input type="checkbox" value="${c.id}">🎭 ${esc(c.name)}</label>`).join('')}</div>
+      <div class="confirm-actions">
+        <button class="secondary" data-k="no">Zrušit</button>
+        <button data-k="yes">🤫 Prozradit</button>
+      </div>
     </div></div>`).firstElementChild;
     document.body.appendChild(overlay);
+    overlay.querySelectorAll('.pick-toggle input').forEach(i =>
+      i.addEventListener('change', () => i.closest('.pick-toggle').classList.toggle('on', i.checked)));
     const done = v => { overlay.remove(); resolve(v); };
     overlay.onclick = e => { if (e.target === overlay) done(null); };
     overlay.querySelector('[data-k=no]').onclick = () => done(null);
-    overlay.querySelectorAll('[data-ch]').forEach(b => b.onclick = () => done(+b.dataset.ch));
+    overlay.querySelector('[data-k=yes]').onclick = () =>
+      done([...overlay.querySelectorAll('.pick-toggle input:checked')].map(i => +i.value));
   });
-  if (!picked) return;
-  try {
-    const r = await api(`/api/blocks/${blockId}/reveal`, { method: 'POST', body: { toCharId: picked } });
-    invToast(r.approved ? 'Informace prozrazena — postava ji teď vidí.' : 'Odesláno DM ke schválení.');
-  } catch (e) { invToast(e.message); }
+  if (!picked || !picked.length) return;
+  const ok = [], wait = [], fail = [];
+  for (const chId of picked) {
+    const name = (state.characters.find(c => c.id === chId) || {}).name || '?';
+    try {
+      const r = await api(`/api/blocks/${blockId}/reveal`, { method: 'POST', body: { toCharId: chId } });
+      (r.approved ? ok : wait).push(name);
+    } catch (e) { fail.push(name); }
+  }
+  const parts = [];
+  if (ok.length) parts.push(`prozrazeno: ${ok.join(', ')}`);
+  if (wait.length) parts.push(`čeká na DM: ${wait.join(', ')}`);
+  if (fail.length) parts.push(`nevyšlo: ${fail.join(', ')}`);
+  invToast(parts.join(' · ') || 'Hotovo.');
+  route(); // překreslit — u bloku se ukáže podaná žádost
 }
 document.addEventListener('click', e => {
   const btn = e.target.closest('[data-reveal]');
