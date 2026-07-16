@@ -206,4 +206,15 @@ check_has "obsazená buňka L-tvaru odmítne" "$X" "obsazen"
 V=$(req i_d.jar GET /api/articles/$LKO)
 check_has "w/h dopočítané z tvaru (2×2)" "$V" '"w":2'
 
+echo "== úprava vlastního slotu =="
+SK2=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Kapsa","cap":2,"group":"Doplňky"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+req i_d.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"group":"Tělo","label":"Kapsička"}' > /dev/null
+check_has "slot přesunut do jiné oblasti" "$(req i_h1.jar GET /api/inv/char/$BAR)" '"group":"Tělo"'
+KAM2=$(mk "Oblázek" '{"shape":[{"x":0,"y":0},{"x":1,"y":0}],"wearable":true,"identifiedDefault":true}')
+req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$KAM2,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"$SK2\"}}" > /dev/null
+X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"cap":1}')
+check_has "zmenšení kapacity obsazeného slotu odmítnuto" "$X" "nelze zmenšit"
+X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"group":"Ruce"}')
+check_has "hráč slot neupraví" "$X" "error"
+
 echo; echo "🎉 Testy grafického inventáře prošly."

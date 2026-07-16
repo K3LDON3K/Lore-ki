@@ -2064,6 +2064,26 @@ route('POST', '/api/campaigns/:cid/inv/slots', async (req, res, params, userId, 
   save(); sseBroadcast(cid, { inv: 1 });
   sendJSON(res, 200, { key });
 });
+route('PUT', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Sloty spravuje DM.' });
+  const camp = db.campaigns.find(c => c.id === cid);
+  const s = (camp.customSlots || []).find(x => x.key === String(params.key));
+  if (!s) return sendJSON(res, 404, { error: 'Slot nenalezen.' });
+  const body = await readJSONBody(req);
+  if (body.label !== undefined && String(body.label).trim()) s.label = String(body.label).trim().slice(0, 30);
+  if (body.group !== undefined && String(body.group).trim()) s.group = String(body.group).trim().slice(0, 30);
+  if (body.cap !== undefined) {
+    const cap = Math.max(1, Math.min(4, parseInt(body.cap, 10) || s.cap));
+    // zmenšení kapacity jen když je slot všude prázdný — jinak by předměty přetekly
+    if (cap < s.cap && db.itemInstances.some(i => i.campaignId === cid && i.loc && i.loc.t === 'slot' && i.loc.slot === s.key))
+      return sendJSON(res, 400, { error: 'Kapacitu nelze zmenšit — ve slotu jsou předměty.' });
+    s.cap = cap;
+  }
+  save(); sseBroadcast(cid, { inv: 1 });
+  sendJSON(res, 200, { ok: true });
+});
 route('DELETE', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, userId, query) => {
   const cid = parseInt(params.cid, 10);
   const viewer = userId && resolveViewer(userId, cid, query.viewAs);

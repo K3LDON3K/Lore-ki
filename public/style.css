@@ -1047,3 +1047,11 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
   transform: translate(-50%, -50%) rotate(90deg);
   object-fit: contain;
 }
+
+/* výběr článku s miniaturou + úprava slotu + vzít si */
+.pick-row { display: flex !important; align-items: center; gap: 10px; }
+.pick-thumb { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; flex: none; }
+.pick-thumb.ph { display: flex; align-items: center; justify-content: center; background: var(--panel2); }
+.sl-edit { color: var(--muted); margin-left: 5px; cursor: pointer; font-weight: 800; }
+.sl-edit:hover { color: var(--accent); text-decoration: none; }
+.invd-takes { display: flex; gap: 6px; flex-wrap: wrap; }
