@@ -1315,7 +1315,11 @@ route('GET', '/api/campaigns/:cid/articles', async (req, res, params, userId, qu
   if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
   let rows = db.articles.filter(a => a.campaignId === cid && !a.sessionId); // zápisy ze sezení se v seznamech neukazují
   if (!viewer.isDM) rows = rows.filter(a => articleVisibleToPlayer(a.id, viewer.userId));
-  if (query.category !== undefined) rows = rows.filter(a => (a.category || '') === query.category);
+  if (query.category === 'Moje postavy') {
+    // virtuální filtr: články hráčských postav, které vlastní právě tento uživatel
+    const mine = new Set(db.characters.filter(ch => ch.campaignId === cid && ch.userId === viewer.userId).map(ch => ch.articleId));
+    rows = rows.filter(a => mine.has(a.id));
+  } else if (query.category !== undefined) rows = rows.filter(a => (a.category || '') === query.category);
   rows = rows.slice().sort((a, b) => a.title.localeCompare(b.title, 'cs'));
   sendJSON(res, 200, rows.map(a => articleListItem(a, viewer)));
 });
@@ -1354,6 +1358,7 @@ route('POST', '/api/campaigns/:cid/category-list', async (req, res, params, user
   const { name, color } = await readJSONBody(req);
   const clean = String(name || '').trim().slice(0, 60);
   if (!clean) return sendJSON(res, 400, { error: 'Zadejte název kategorie.' });
+  if (clean === 'Moje postavy') return sendJSON(res, 400, { error: '„Moje postavy“ je vyhrazený filtr — kategorie s tímto názvem nejde založit.' });
   const camp = db.campaigns.find(c => c.id === cid);
   camp.categories = camp.categories || [];
   if (!camp.categories.includes(clean)) camp.categories.push(clean);
@@ -1497,6 +1502,7 @@ route('PUT', '/api/articles/:id', async (req, res, params, userId, query) => {
   a.title = (body.title || a.title).trim();
   a.description = body.description || '';
   if (asDM) a.category = (body.category || '').trim(); // vlastník kategorii měnit nemůže
+  if (a.category === 'Moje postavy') a.category = ''; // vyhrazený virtuální filtr, ne skutečná kategorie
   a.tags = body.tags || '';
   if (a.category === 'Jazyk') { // jazyk musí mít unikátní barvu
     const color = String(body.langColor || a.langColor || '').trim();

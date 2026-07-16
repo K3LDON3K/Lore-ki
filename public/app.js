@@ -70,7 +70,7 @@ function myCharacters() { return state.characters.filter(c => c.userId === state
 
 // ---------------------------------------------------------------- kategorie: ikony + barevný nádech
 const CAT_STYLE = { // systémové a běžné kategorie: emoji + odstín (H,S dvojice; L dopočítá režim)
-  'Kampaň': ['🏠', 265], 'Hráčské postavy': ['🧝', 210], 'Předměty': ['🎒', 40],
+  'Kampaň': ['🏠', 265], 'Hráčské postavy': ['🧝', 210], 'Moje postavy': ['🎭', 210], 'Předměty': ['🎒', 40],
   'Jazyk': ['🗣️', 285], 'NPC': ['👤', 150], 'Monstra': ['🐲', 355],
   'Města': ['🏰', 30], 'Lokace': ['🗺️', 175], 'Frakce': ['⚔️', 20], 'Bohové': ['✨', 50],
   'Historie': ['📜', 35], 'Události': ['🎬', 320], 'Questy': ['📌', 130], 'Pravidla světa': ['📖', 240],
@@ -388,6 +388,13 @@ function shell(contentHTML, { activeCat = undefined, active = '', noSidebar = fa
     <h4>Navigace</h4>
     ${navItems(cid).map(it => `<a class="catlink ${it.isActive(active, activeCat) ? 'active' : ''}" href="${it.href}">${it.icon} ${esc(it.label)}</a>`).join('')}
     <h4>Kategorie</h4>
+    ${(() => { // virtuální filtr: články mých postav (při náhledu DM „za hráče“ postavy toho hráče)
+      const viewUser = state.viewAs || (state.me && state.me.id);
+      const mine = state.characters.filter(c => c.userId === viewUser);
+      if (!mine.length) return '';
+      return `<a class="catlink ${activeCat === 'Moje postavy' ? 'active' : ''}"
+        href="#/c/${cid}/cat/${encodeURIComponent('Moje postavy')}" title="Články hráčských postav, které vlastníte"><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${catTint('Moje postavy').bar};margin-right:7px;vertical-align:middle"></span>🎭 Moje postavy <span class="count">${mine.length}</span></a>`;
+    })()}
     ${state.cats.length ? state.cats.map(c => `
       <a class="catlink ${activeCat === c.name ? 'active' : ''}"
          href="#/c/${cid}/cat/${encodeURIComponent(c.name)}"><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${catTint(c.name).bar};margin-right:7px;vertical-align:middle"></span>${catIcon(c.name)} ${esc(c.name)} <span class="count">${c.count}</span></a>`).join('')
