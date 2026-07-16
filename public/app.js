@@ -797,6 +797,15 @@ async function refPaneRender() {
   el.querySelector('[data-k=goto]').onclick = () => { location.hash = `#/c/${state.campaign.id}/a/${id}`; };
   el.querySelector('.refpane-body').scrollTop = 0;
 }
+// klik na přílohu vloženou v textu → náhled v okně (stejně jako blok Příloha)
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a.att');
+  if (!a) return;
+  e.preventDefault();
+  const mId = /\/api\/images\/(\d+)/.exec(a.getAttribute('href') || '');
+  if (mId) openAttachment(+mId[1], a.dataset.att || 'příloha', a.dataset.mime || '');
+});
+
 // klik na referenci → panel místo přechodu (Ctrl/Cmd+klik nechá projít na nové okno)
 document.addEventListener('click', e => {
   const link = e.target.closest('a.ref');
@@ -1113,7 +1122,7 @@ async function saveAsTemplate(b) {
 
 // ================================================================ SDÍLENÝ EDITOR BLOKŮ
 const BLOCK_TYPES = [
-  ['heading', 'Nadpis'], ['paragraph', 'Odstavec'], ['list', 'Seznam'],
+  ['heading', 'Nadpis'], ['paragraph', 'Text'], ['list', 'Seznam'],
   ['quote', 'Citace'], ['alert', 'Upozornění'], ['divider', 'Oddělovač'],
   ['image', 'Obrázek'], ['audio', 'Audio'], ['youtube', 'YouTube video'], ['file', 'Příloha'],
   ['link', 'Odkaz na článek'], ['statblock', 'Stat blok (5e)'],
@@ -1135,6 +1144,13 @@ function blockTypeLabel(t) { return (BLOCK_TYPES.find(x => x[0] === t) || ['', t
 
 function richToolbarHTML() {
   return `<div class="rt-toolbar">
+    <select data-styl title="Styl odstavce">
+      <option value="">Styl</option>
+      <option value="p">Běžný text</option>
+      <option value="h2">Nadpis</option>
+      <option value="h3">Menší nadpis</option>
+      <option value="blockquote">Citace</option>
+    </select>
     <button data-c="bold" title="Tučně"><b>B</b></button>
     <button data-c="italic" title="Kurzíva"><i>I</i></button>
     <button data-c="underline" title="Podtržení"><u>U</u></button>
@@ -1144,10 +1160,19 @@ function richToolbarHTML() {
       <option value="3">Normální</option><option value="5">Velké</option>
       <option value="6">Největší</option>
     </select>
-    <button data-color title="Barva písma">🎨 Barva</button>
-    <button data-ref title="Vložit odkaz na jiný článek">🔗 Reference</button>
-    <button data-imginsert title="Vložit obrázek do textu">🖼</button>
-    <button data-spoiler title="Označit vybraný text jako spoiler">▓ Spoiler</button>
+    <button data-color title="Barva písma">🎨</button>
+    <button data-c="insertUnorderedList" title="Odrážkový seznam">•≡</button>
+    <button data-c="insertOrderedList" title="Číslovaný seznam">1≡</button>
+    <button data-callout title="Upozornění (žlutý rámeček)">⚠</button>
+    <button data-hr title="Vodorovný oddělovač">―</button>
+    <span class="rt-sep"></span>
+    <button data-ref title="Vložit odkaz na jiný článek">🔗</button>
+    <button data-imginsert title="Vložit obrázek">🖼</button>
+    <button data-sketch title="Nakreslit vlastní kresbu">✏️</button>
+    <button data-audio title="Vložit zvukovou nahrávku">🎵</button>
+    <button data-yt title="Vložit YouTube video">▶</button>
+    <button data-attins title="Přiložit soubor">📎</button>
+    <button data-spoiler title="Označit vybraný text jako spoiler">▓</button>
     <button data-clear title="Vymazat formátování">⌫</button>
   </div>`;
 }
@@ -1175,6 +1200,71 @@ function openColorMenu(x, y, onColor, onClear) {
   // zavření jen při kliknutí MIMO menu (klik na paletu menu nezavře)
   const outside = (e) => { if (!menu.contains(e.target)) { closeCtxMenu(); document.removeEventListener('mousedown', outside, true); } };
   setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
+}
+
+/** Kreslicí plátno 1:1 — paleta, tloušťka, guma; výsledek se nahraje jako obrázek. */
+function openSketchpad(cb) {
+  const SIZE = 640;
+  const overlay = h(`<div class="modal-overlay"><div class="modal sketch-modal">
+    <h3 style="margin:0 0 10px">✏️ Vlastní kresba</h3>
+    <div class="sketch-tools">
+      <div class="colorgrid">${['#1c1c1e', '#ffffff', ...TEXT_PALETTE].map(c => `<button class="colorswatch" data-c="${c}" style="background:${c}"></button>`).join('')}</div>
+      <div class="sketch-tools2">
+        <button class="small secondary" data-w="4">tenká</button>
+        <button class="small secondary" data-w="9">střední</button>
+        <button class="small secondary" data-w="20">silná</button>
+        <button class="small secondary" data-eraser>🧽 Guma</button>
+        <button class="small danger" data-clear2>Smazat vše</button>
+      </div>
+    </div>
+    <canvas class="sketch-canvas" width="${SIZE}" height="${SIZE}"></canvas>
+    <div class="confirm-actions" style="margin-top:12px">
+      <button class="secondary" data-k="no">Zrušit</button>
+      <button data-k="yes">✔ Vložit kresbu</button>
+    </div>
+  </div></div>`).firstElementChild;
+  document.body.appendChild(overlay);
+  const canvas = overlay.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#f5f1e8'; ctx.fillRect(0, 0, SIZE, SIZE); // pergamenové pozadí
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  let color = '#1c1c1e', width = 9, eraser = false, drawing = false;
+  const mark = () => {
+    overlay.querySelectorAll('.colorswatch').forEach(b => b.classList.toggle('on', !eraser && b.dataset.c === color));
+    overlay.querySelectorAll('[data-w]').forEach(b => b.classList.toggle('on', +b.dataset.w === width));
+    overlay.querySelector('[data-eraser]').classList.toggle('on', eraser);
+  };
+  overlay.querySelectorAll('.colorswatch').forEach(b => b.onclick = () => { color = b.dataset.c; eraser = false; mark(); });
+  overlay.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { width = +b.dataset.w; mark(); });
+  overlay.querySelector('[data-eraser]').onclick = () => { eraser = !eraser; mark(); };
+  overlay.querySelector('[data-clear2]').onclick = () => { ctx.fillStyle = '#f5f1e8'; ctx.fillRect(0, 0, SIZE, SIZE); };
+  mark();
+  const pos = e => {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (SIZE / r.width), y: (e.clientY - r.top) * (SIZE / r.height) };
+  };
+  canvas.onpointerdown = e => {
+    e.preventDefault(); canvas.setPointerCapture(e.pointerId);
+    drawing = true;
+    const p = pos(e);
+    ctx.strokeStyle = eraser ? '#f5f1e8' : color;
+    ctx.lineWidth = eraser ? width * 2.5 : width;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.01, p.y + 0.01); ctx.stroke();
+  };
+  canvas.onpointermove = e => {
+    if (!drawing) return;
+    const p = pos(e);
+    ctx.lineTo(p.x, p.y); ctx.stroke();
+  };
+  canvas.onpointerup = canvas.onpointercancel = () => { drawing = false; };
+  overlay.querySelector('[data-k=no]').onclick = () => overlay.remove();
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector('[data-k=yes]').onclick = () => {
+    canvas.toBlob(async blob => {
+      try { const r = await uploadImage(blob, 'kresba.png'); overlay.remove(); cb(r.id); }
+      catch (e2) { invToast(e2.message); }
+    }, 'image/png');
+  };
 }
 
 /** Jedna toggle pilulka (checkbox skrytý uvnitř — čtení přes :checked funguje beze změny). */
@@ -1388,6 +1478,52 @@ function wireRich(f, c) {
   f.querySelector('[data-imginsert]').onclick = e => { e.preventDefault(); saveSel(); insertImage(); };
   f.querySelector('[data-spoiler]').onclick = e => { e.preventDefault(); insertSpoiler(); };
   f.querySelector('[data-clear]').onclick = () => exec('removeFormat');
+  // styl odstavce (nadpisy, citace) — nahrazuje dřívější samostatné bloky
+  const styl = f.querySelector('[data-styl]');
+  if (styl) styl.onchange = () => { if (styl.value) exec('formatBlock', `<${styl.value}>`); styl.value = ''; };
+  const insHTML = html => { editor.focus(); restoreSel(); document.execCommand('insertHTML', false, html); sync(); saveSel(); };
+  const co = f.querySelector('[data-callout]');
+  if (co) co.onclick = e => {
+    e.preventDefault(); editor.focus(); restoreSel();
+    const sel = getSelection().toString();
+    insHTML(`<div class="callout">${sel.trim() ? esc(sel) : 'Upozornění…'}</div><p><br></p>`);
+  };
+  const hrB = f.querySelector('[data-hr]');
+  if (hrB) hrB.onclick = e => { e.preventDefault(); insHTML('<hr><p><br></p>'); };
+  const pickFile = (accept, cb) => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; if (accept) inp.accept = accept;
+    inp.onchange = () => { if (inp.files[0]) cb(inp.files[0]); };
+    inp.click();
+  };
+  const au = f.querySelector('[data-audio]');
+  if (au) au.onclick = e => {
+    e.preventDefault(); saveSel();
+    pickFile('audio/*', file => uploadImage(file, file.name || 'nahravka.mp3')
+      .then(r => insHTML(`<audio controls src="/api/images/${r.id}"></audio><p><br></p>`))
+      .catch(err => alert(err.message)));
+  };
+  const yt = f.querySelector('[data-yt]');
+  if (yt) yt.onclick = async e => {
+    e.preventDefault(); saveSel();
+    const url = await promptDialog('Vložte odkaz na YouTube video.', { title: 'YouTube video', icon: '▶', ok: 'Vložit', placeholder: 'https://www.youtube.com/watch?v=…' });
+    if (!url) return;
+    const mYt = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{5,20})/.exec(url.trim());
+    if (!mYt) return invToast('Z odkazu se nepodařilo přečíst video.');
+    insHTML(`<iframe class="yt" src="https://www.youtube-nocookie.com/embed/${mYt[1]}" allowfullscreen loading="lazy"></iframe><p><br></p>`);
+  };
+  const at = f.querySelector('[data-attins]');
+  if (at) at.onclick = e => {
+    e.preventDefault(); saveSel();
+    pickFile('', file => uploadImage(file, file.name || 'priloha')
+      .then(r => insHTML(`<a class="att" href="/api/images/${r.id}" data-att="${esc((file.name || 'příloha').replace(/"/g, ''))}" data-mime="${esc(file.type || '')}">📎 ${esc(file.name || 'příloha')}</a>&nbsp;`))
+      .catch(err => alert(err.message)));
+  };
+  const sk = f.querySelector('[data-sketch]');
+  if (sk) sk.onclick = e => {
+    e.preventDefault(); saveSel();
+    openSketchpad(imgId => insHTML(`<img src="/api/images/${imgId}" style="width:50%"> `));
+  };
 
   attachCtxMenu(editor, () => [
     { icon: '𝐁', label: 'Tučně', action: () => exec('bold') },
@@ -1397,6 +1533,7 @@ function wireRich(f, c) {
     { icon: '▓', label: 'Označit jako spoiler', action: insertSpoiler },
     { icon: '🌐', label: 'Označit jako cizí jazyk…', action: insertLang },
     { icon: '🖼', label: 'Vložit obrázek…', action: insertImage },
+    { icon: '✏️', label: 'Nakreslit kresbu…', action: () => openSketchpad(imgId => { editor.focus(); restoreSel(); document.execCommand('insertHTML', false, `<img src="/api/images/${imgId}" style="width:50%"> `); sync(); }) },
     { icon: '🔗', label: 'Vložit referenci na článek…', action: insertRef },
     { icon: '⌫', label: 'Vymazat formátování', action: () => exec('removeFormat') },
   ]);
@@ -1608,6 +1745,17 @@ function blockVisControls(b, forOwner = false) {
   sel.onchange = () => { b.visibility = sel.value; drawChecks(); };
   drawChecks();
   return v;
+}
+
+/** Speciální bloky pod pravým tlačítkem na (+). Běžný obsah patří do textového bloku. */
+function blockSpecialItems(ins, insTemplate, { ownerMode = false } = {}) {
+  const items = [
+    { icon: '📝', label: 'Textový blok', action: () => ins('paragraph') },
+    { icon: '🐉', label: 'Stat blok (5e)', action: () => ins('statblock') },
+  ];
+  if (!ownerMode && canEdit()) items.push({ icon: '🗒', label: 'Poznámka DM', action: () => ins('dm_note') });
+  if (canEdit()) items.push({ icon: '📋', label: 'Ze šablony…', action: () => pickTemplate(insTemplate) });
+  return items;
 }
 
 function newBlock(type) {
@@ -2353,7 +2501,7 @@ async function renderArticle(aid) {
       <button data-seg-edit="${i}" title="Upravit blok">✏️</button>
       <button data-seg-del="${i}" title="Odstranit blok">✕</button>
     </div>` : '';
-  const addZone = (i) => editable ? `<div class="seg-add" data-seg-add="${i}" title="Vložit blok sem"><span>+</span></div>` : '';
+  const addZone = (i) => editable ? `<div class="seg-add" data-seg-add="${i}" title="Vložit textový blok (pravé tlačítko: speciální bloky)"><span>+</span></div>` : '';
 
   shell(`
     <div class="article-body">
@@ -2548,18 +2696,16 @@ async function renderArticle(aid) {
     const i = parseInt(btn.dataset.segDown, 10);
     if (i < editBlocks.length - 1) { [editBlocks[i + 1], editBlocks[i]] = [editBlocks[i], editBlocks[i + 1]]; persist(); }
   });
-  $app.querySelectorAll('[data-seg-add]').forEach(zone => zone.onclick = e => {
-    const at = parseInt(zone.dataset.segAdd, 10);
-    const types = BLOCK_TYPES.filter(([t]) => !ownerMode || t !== 'dm_note'); // vlastník DM poznámky nevkládá
-    const items = types.map(([type, label]) => ({
-      icon: '＋', label,
-      action: () => { editBlocks.splice(at, 0, newBlock(type)); openInline(at, true); }
-    }));
-    if (dm) items.push({
-      icon: '📋', label: 'Ze šablony…',
-      action: () => pickTemplate(t => { editBlocks.splice(at, 0, { ...newBlock(t.type), content: t.content }); openInline(at, true); })
-    });
-    openCtxMenu(e.clientX, e.clientY, items);
+  $app.querySelectorAll('[data-seg-add]').forEach(zone => {
+    const at = () => parseInt(zone.dataset.segAdd, 10);
+    const ins = type => { editBlocks.splice(at(), 0, newBlock(type)); openInline(at(), true); };
+    // levý klik = rovnou textový blok (vše ostatní je v jeho editoru)
+    zone.onclick = () => ins('paragraph');
+    zone.oncontextmenu = e => {
+      e.preventDefault();
+      const items = blockSpecialItems(ins, t => { editBlocks.splice(at(), 0, { ...newBlock(t.type), content: t.content }); openInline(at(), true); }, { ownerMode });
+      openCtxMenu(e.clientX, e.clientY, items);
+    };
   });
 }
 
@@ -2771,20 +2917,14 @@ async function renderSession(sid, editMine = false) {
   const reportBody = $app.querySelector('#reportBody');
   let reportBlocks = null, reportEditing = false;
 
-  function reportAddMenu(e, at) {
-    const items = BLOCK_TYPES.map(([type, label]) => ({
-      icon: '＋', label,
-      action: () => { reportBlocks.splice(at, 0, newBlock(type)); dirty = true; drawReportEditor(); }
-    }));
-    items.push({
-      icon: '📋', label: 'Ze šablony…',
-      action: () => pickTemplate(t => { reportBlocks.splice(at, 0, { ...newBlock(t.type), content: t.content }); dirty = true; drawReportEditor(); })
-    });
-    openCtxMenu(e.clientX, e.clientY, items);
-  }
   function reportAddZone(at) {
-    const z = h(`<div class="seg-add" title="Vložit blok sem"><span>+</span></div>`).firstElementChild;
-    z.onclick = e => reportAddMenu(e, at);
+    const z = h(`<div class="seg-add" title="Vložit textový blok (pravé tlačítko: speciální bloky)"><span>+</span></div>`).firstElementChild;
+    const ins = type => { reportBlocks.splice(at, 0, newBlock(type)); dirty = true; drawReportEditor(); };
+    z.onclick = () => ins('paragraph');
+    z.oncontextmenu = e => {
+      e.preventDefault();
+      openCtxMenu(e.clientX, e.clientY, blockSpecialItems(ins, t => { reportBlocks.splice(at, 0, { ...newBlock(t.type), content: t.content }); dirty = true; drawReportEditor(); }, {}));
+    };
     return z;
   }
   function drawReportPreview() {
@@ -3360,17 +3500,12 @@ async function renderEditor(aid) {
   });
 
     const addZoneEl = (at) => {
-      const z = h(`<div class="seg-add" title="Vložit blok sem"><span>+</span></div>`).firstElementChild;
-      z.onclick = e => {
-        const items = typeOptions.map(([type, label]) => ({
-          icon: '＋', label,
-          action: () => { blocks.splice(at, 0, newBlock(type)); draw(); }
-        }));
-        if (canEdit()) items.push({
-          icon: '📋', label: 'Ze šablony…',
-          action: () => pickTemplate(t => { blocks.splice(at, 0, { ...newBlock(t.type), content: t.content }); draw(); })
-        });
-        openCtxMenu(e.clientX, e.clientY, items);
+      const z = h(`<div class="seg-add" title="Vložit textový blok (pravé tlačítko: speciální bloky)"><span>+</span></div>`).firstElementChild;
+      const ins = type => { blocks.splice(at, 0, newBlock(type)); draw(); };
+      z.onclick = () => ins('paragraph');
+      z.oncontextmenu = e => {
+        e.preventDefault();
+        openCtxMenu(e.clientX, e.clientY, blockSpecialItems(ins, t => { blocks.splice(at, 0, { ...newBlock(t.type), content: t.content }); draw(); }, { ownerMode }));
       };
       return z;
     };

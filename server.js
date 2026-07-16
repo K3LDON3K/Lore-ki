@@ -490,10 +490,28 @@ function searchableBlockText(b, viewer, campaignId) {
  */
 function sanitizeHTML(html) {
   return String(html).replace(/<[^>]*>?/g, tag => {
-    const m = /^<(\/?)(b|strong|i|em|u|s|strike|br|font|span|div|p|img)\b([^>]*?)\/?>$/i.exec(tag);
+    const m = /^<(\/?)(b|strong|i|em|u|s|strike|br|font|span|div|p|img|h2|h3|ul|ol|li|blockquote|hr|audio|a|iframe)\b([^>]*?)\/?>$/i.exec(tag);
     if (!m) return '';
     const name = m[2].toLowerCase();
-    if (m[1]) return name === 'img' ? '' : `</${name}>`;
+    if (m[1]) return ['img', 'hr', 'br'].includes(name) ? '' : `</${name}>`;
+    // bezobsahové a strukturní tagy bez atributů
+    if (['h2', 'h3', 'ul', 'ol', 'li', 'blockquote'].includes(name)) return `<${name}>`;
+    if (name === 'hr') return '<hr>';
+    if (name === 'audio') { // jen interní nahrávky
+      const src = /src="(\/api\/images\/\d+)(?:\?[^"]*)?"/i.exec(m[3]);
+      return src ? `<audio controls src="${src[1]}"></audio>` : '';
+    }
+    if (name === 'a') { // jen příloha odkazující na interní soubor
+      const href = /href="(\/api\/images\/\d+)(?:\?[^"]*)?"/i.exec(m[3]);
+      if (!href) return '';
+      const att = /data-att="([^"<>]{1,80})"/i.exec(m[3]);
+      const mime = /data-mime="([\w./+-]{0,60})"/i.exec(m[3]);
+      return `<a class="att" href="${href[1]}" data-att="${att ? att[1] : 'příloha'}"${mime ? ` data-mime="${mime[1]}"` : ''}>`;
+    }
+    if (name === 'iframe') { // výhradně YouTube embed, nic jiného
+      const src = /src="(https:\/\/www\.youtube(?:-nocookie)?\.com\/embed\/[A-Za-z0-9_-]{5,20})"/i.exec(m[3]);
+      return src ? `<iframe class="yt" src="${src[1]}" allowfullscreen loading="lazy"></iframe>` : '';
+    }
     if (name === 'img') { // jen interní obrázky, žádné externí URL
       const src = /src="(\/api\/images\/\d+)(?:\?[^"]*)?"/i.exec(m[3]);
       if (!src) return '';
@@ -524,6 +542,7 @@ function sanitizeHTML(html) {
       }
       const cls = /class="([^"]*)"/i.exec(m[3]);
       if (cls && cls[1].trim() === 'spoiler') attrs += ' class="spoiler"'; // označení spoileru
+      if (cls && cls[1].trim() === 'callout' && name === 'div') attrs += ' class="callout"'; // upozornění v textu
       if (cls && cls[1].trim() === 'lang') { // označení cizím jazykem
         const dl = /data-lang="(\d+)"/i.exec(m[3]);
         // class="lang" se zachovává i BEZ data-lang — jinak by se označení ztratilo

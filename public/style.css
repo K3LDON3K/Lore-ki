@@ -1166,3 +1166,24 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .refpick-list { max-height: 320px; overflow: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .refpick-row { display: flex; gap: 8px; align-items: baseline; text-align: left; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
 .refpick-row:hover { border-color: var(--accent); }
+
+/* ---- editor: vše v jednom textovém bloku ---- */
+.rt-toolbar .rt-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; align-self: center; }
+.article-body .callout, .rich .callout {
+  border-left: 4px solid #e08b3a; background: var(--panel2);
+  padding: 8px 12px; border-radius: 0 10px 10px 0; margin: 10px 0;
+}
+.article-body audio, .rich audio { display: block; width: 100%; max-width: 420px; margin: 8px 0; }
+.article-body iframe.yt, .rich iframe.yt { width: 100%; max-width: 560px; aspect-ratio: 16/9; border: 0; border-radius: 12px; display: block; margin: 8px 0; }
+a.att { display: inline-block; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 3px 10px; margin: 2px 0; text-decoration: none; }
+a.att:hover { border-color: var(--accent); }
+.article-body h2, .rich h2 { font-size: 22px; margin: 14px 0 6px; }
+.article-body h3, .rich h3 { font-size: 17px; margin: 12px 0 4px; }
+.article-body blockquote, .rich blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 4px 12px; color: var(--muted); font-style: italic; }
+
+/* kreslicí plátno */
+.sketch-modal { max-width: 560px; }
+.sketch-canvas { width: 100%; aspect-ratio: 1/1; border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; display: block; }
+.sketch-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.sketch-tools2 { display: flex; gap: 6px; flex-wrap: wrap; }
+.sketch-tools2 button.on, .sketch-tools .colorswatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
