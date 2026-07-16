@@ -897,7 +897,7 @@ function openCropper(file, cb, opts = {}) {
       <div class="crop-viewport"><canvas></canvas></div>
       <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
         <span class="blocktype">Zoom</span>
-        <input type="range" min="50" max="300" value="100" data-k="zoom" style="flex:1">
+        <input type="range" min="25" max="300" value="100" data-k="zoom" style="flex:1">
         <span class="muted" style="font-size:11px">pod 100 % vznikne průhledný okraj</span>
       </div>
       ${opts.checkbox ? `
@@ -957,7 +957,7 @@ function openCropper(file, cb, opts = {}) {
       drag = { x: e.clientX, y: e.clientY }; drawIt();
     };
     canvas.onpointerup = () => { drag = null; };
-    canvas.onwheel = e => { e.preventDefault(); zoom = Math.max(0.5, Math.min(3, zoom * (e.deltaY < 0 ? 1.08 : 0.93))); zoomEl.value = Math.round(zoom * 100); drawIt(); };
+    canvas.onwheel = e => { e.preventDefault(); zoom = Math.max(0.25, Math.min(3, zoom * (e.deltaY < 0 ? 1.08 : 0.93))); zoomEl.value = Math.round(zoom * 100); drawIt(); };
     const zoomEl = overlay.querySelector('[data-k=zoom]');
     zoomEl.oninput = () => { zoom = zoomEl.value / 100; drawIt(); };
     overlay.querySelector('[data-k=aspect]').onchange = e => { aspect = parseFloat(e.target.value); resize(); };
@@ -3072,10 +3072,11 @@ async function renderEditor(aid) {
               <label style="margin-top:0">Obrázek tokenu (s průhledností, ideálně PNG)</label>
               <input type="file" id="iToken" accept="image/*" style="width:auto">
             </div>
-            <div><label style="margin-top:0">Šířka (políčka)</label>
-              <select id="iW">${[1, 2, 3, 4, 5, 6].map(n => `<option ${num(it.w, 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-            <div><label style="margin-top:0">Výška (políčka)</label>
-              <select id="iH">${[1, 2, 3, 4, 5, 6].map(n => `<option ${num(it.h, 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+            <div>
+              <label style="margin-top:0">Tvar tokenu — klikáním v mřížce (jde i kříž, L…)</label>
+              <div id="iShapeGrid" class="contgrid-edit shape"></div>
+              <p class="muted" style="margin:6px 0 0">Velikost: <b id="iShapeCount">?</b> políček (spočítá se z tvaru)</p>
+            </div>
           </div>
         </div>
 
@@ -3194,10 +3195,10 @@ async function renderEditor(aid) {
           a.coverImageId = mainId;
           a.coverThumbId = thumbId || mainId;
           draw();
-        }, { aspect: 1, title: 'Čtvercový náhled do seznamu (1 : 1)', noSkip: true });
+        }, { aspect: 1, title: 'Miniatura do seznamu článků (čtverec 1 : 1)', noSkip: true });
       }, {
-        aspectDefault: 0.75, title: 'Hlavní obrázek — zvolte poměr', noSkip: false,
-        checkbox: { label: 'vytvořit i čtvercový náhled do seznamu (další krok)', checked: true }
+        aspectDefault: 0.75, title: 'Hlavní obrázek článku — zobrazí se nahoře v článku a v galerii', noSkip: false,
+        checkbox: { label: 'vytvořit i čtvercový náhled (miniatura v seznamu článků — další krok)', checked: true }
       });
     };
     const cd = $app.querySelector('#eCoverDel');
@@ -3298,6 +3299,31 @@ async function renderEditor(aid) {
           $app.querySelector('#iTokenPrev').innerHTML = `<img src="${imgUrl(r.id)}" alt="">`;
         } catch (err) { alert(err.message); }
       };
+      // klikací tvar tokenu (6×6): políčko zapnout/vypnout; velikost = počet políček
+      const shapeEl = $app.querySelector('#iShapeGrid');
+      const shapeSet = new Set(
+        (a.item.shape && a.item.shape.length ? a.item.shape : (() => {
+          const o = []; const w = a.item.w || 1, hh = a.item.h || 1;
+          for (let x = 0; x < w; x++) for (let y = 0; y < hh; y++) o.push({ x, y });
+          return o;
+        })()).map(c => c.x + ',' + c.y));
+      const drawShape = () => {
+        if (!shapeEl) return;
+        let html = '';
+        for (let y = 0; y < 6; y++) for (let x = 0; x < 6; x++)
+          html += `<div class="cg-cell ${shapeSet.has(x + ',' + y) ? 'on c-s' : ''}" data-x="${x}" data-y="${y}"></div>`;
+        shapeEl.innerHTML = html;
+        const cnt = $app.querySelector('#iShapeCount');
+        if (cnt) cnt.textContent = shapeSet.size;
+        shapeEl.querySelectorAll('.cg-cell').forEach(el2 => el2.onclick = () => {
+          const k = el2.dataset.x + ',' + el2.dataset.y;
+          if (shapeSet.has(k)) { if (shapeSet.size > 1) shapeSet.delete(k); } // aspoň jedno políčko musí zůstat
+          else shapeSet.add(k);
+          drawShape();
+        });
+      };
+      drawShape();
+
       // klikací mřížka kontejneru (8×6): prázdné → g → y → r → prázdné
       const gridEl = $app.querySelector('#iContGrid');
       const cellMap = new Map(((a.item.container || {}).cells || []).map(c => [c.x + ',' + c.y, c.c]));
@@ -3324,10 +3350,11 @@ async function renderEditor(aid) {
       const anyEl = $app.querySelector('#iAnywhere');
       const syncPill = el => { const l = el.closest('.pick-toggle'); if (l) l.classList.toggle('on', el.checked); };
       if (anyEl) anyEl.addEventListener('change', () => {
-        if (anyEl.checked) $app.querySelectorAll('.iSlot:checked').forEach(x => { x.checked = false; syncPill(x); });
+        // Kamkoli = rychlé „označit vše“; při vypnutí se vše zase odznačí
+        $app.querySelectorAll('.iSlot').forEach(x => { x.checked = anyEl.checked; syncPill(x); });
       });
       $app.querySelectorAll('.iSlot').forEach(x => x.addEventListener('change', () => {
-        if (x.checked && anyEl && anyEl.checked) { anyEl.checked = false; syncPill(anyEl); }
+        if (!x.checked && anyEl && anyEl.checked) { anyEl.checked = false; syncPill(anyEl); } // ruční výjimka vypne Kamkoli, zbytek zůstane
       }));
       // sběr všech polí předmětu do a.item (volá se před uložením)
       a._collectItem = () => {
@@ -3340,7 +3367,7 @@ async function renderEditor(aid) {
         a.item = {
           ...a.item,
           weight: parseFloat(val('iWeight', 0)) || 0, price: val('iPrice', ''), rarity: val('iRarity', ''),
-          w: parseInt(val('iW', 1), 10) || 1, h: parseInt(val('iH', 1), 10) || 1,
+          shape: [...shapeSet].map(k => { const [x, y] = k.split(','); return { x: +x, y: +y }; }), // w/h dopočítá server z obálky
           hpMax: parseInt(val('iHpMax', 10), 10) || 10,
           // nositelnost plyne z výběru slotů: „Kamkoli“ NEBO aspoň jeden konkrétní slot
           wearable: chk('iAnywhere') || !![...$app.querySelectorAll('.iSlot:checked')].length,
@@ -4028,6 +4055,18 @@ const INV_GROUPS = [
   { label: 'Prsteny', slots: ['ring1', 'ring2', 'ring3', 'ring4'] },
 ];
 const invUI = { tab: null, chars: [], zones: [], items: [], charData: null, reloading: false };
+/** Buňky tvaru položené na (X,Y) s otočením — zrcadlí server. */
+function invPlacedCells(it, X, Y, rot) {
+  const cells = (it.shape && it.shape.length) ? it.shape : (() => {
+    const o = []; for (let x = 0; x < it.w; x++) for (let y = 0; y < it.h; y++) o.push({ x, y }); return o;
+  })();
+  return cells.map(c => rot ? { x: X + (it.h - 1 - c.y), y: Y + c.x } : { x: X + c.x, y: Y + c.y });
+}
+function invSlotLabel(key) {
+  if (INV_SLOT_DEFS[key]) return INV_SLOT_DEFS[key].l;
+  const cs = ((state.campaign && state.campaign.customSlots) || []).find(s => s.key === key);
+  return cs ? cs.label : key;
+}
 
 function invToast(msg) {
   document.querySelectorAll('.inv-toast').forEach(t => t.remove());
@@ -4046,8 +4085,10 @@ function invTokenEl(it, cell, fit = false) {
   if (it.stackable) el.dataset.stack = 1;
   el.title = it.name;
   if (!fit) { el.style.width = (w * cell) + 'px'; el.style.height = (h0 * cell) + 'px'; }
+  // otočený obrázek dostane prohozené rozměry (jinak by se nejdřív vtěsnal do širokého boxu a zmenšil)
+  const rotStyle = it.rot && !fit ? ` style="width:${h0 * cell}px; height:${w * cell}px"` : '';
   const img = it.tokenImageId
-    ? `<img src="${imgUrl(it.tokenImageId)}" alt="" draggable="false" ${it.rot ? 'class="rot90"' : ''}>`
+    ? `<img src="${imgUrl(it.tokenImageId)}" alt="" draggable="false" ${it.rot ? `class="rot90"${rotStyle}` : ''}>`
     : `<span class="inv-token-fallback">📦</span>`;
   el.innerHTML = `${img}
     ${!it.identified ? '<span class="tk-unident" title="Neidentifikováno">?</span>' : ''}
@@ -4059,7 +4100,7 @@ function invTokenEl(it, cell, fit = false) {
 
 /** Zeleně/červeně označí všechny cíle podle toho, zda tam tažený předmět jde položit.
     Jen rychlá klientská předpověď — server má poslední slovo. */
-function invMarkTargets(it, rot) {
+function invMarkTargets(it, rot, offX = 0, offY = 0) {
   invClearMarks();
   const items = [...invUI.items, ...(invUI.zoneItems || [])];
   const caps = invUI.slotCaps || {};
@@ -4087,16 +4128,17 @@ function invMarkTargets(it, rot) {
       return;
     }
     const cells = new Set(cont.container.cells.map(c => c.x + ',' + c.y));
-    const rects = items.filter(i => i.id !== it.id && i.loc && i.loc.t === 'grid' && i.loc.cId === cId)
-      .map(i => ({ x: i.loc.x, y: i.loc.y, w: i.rot ? i.h : i.w, h: i.rot ? i.w : i.h }));
-    const w = rot ? it.h : it.w, h0 = rot ? it.w : it.h;
+    const occupied = new Set();
+    items.filter(i => i.id !== it.id && i.loc && i.loc.t === 'grid' && i.loc.cId === cId)
+      .forEach(i => invPlacedCells(i, i.loc.x, i.loc.y, i.rot).forEach(c => occupied.add(c.x + ',' + c.y)));
     grid.querySelectorAll('[data-drop-cell]').forEach(c => {
-      const x = +c.dataset.x, y = +c.dataset.y;
-      let ok = true;
-      for (let dx = 0; dx < w && ok; dx++) for (let dy = 0; dy < h0 && ok; dy++)
-        if (!cells.has((x + dx) + ',' + (y + dy))) ok = false;
-      if (ok) for (const r of rects)
-        if (x < r.x + r.w && r.x < x + w && y < r.y + r.h && r.y < y + h0) { ok = false; break; }
+      // buňka pod kurzorem = políčko, ZA KTERÉ předmět držím → kotva se odečítá
+      const x = +c.dataset.x - offX, y = +c.dataset.y - offY;
+      let ok = x >= 0 && y >= 0;
+      if (ok) for (const p of invPlacedCells(it, x, y, rot)) {
+        const k = p.x + ',' + p.y;
+        if (!cells.has(k) || occupied.has(k)) { ok = false; break; }
+      }
       c.classList.add(ok ? 'drop-can' : 'drop-no');
     });
   });
@@ -4178,24 +4220,25 @@ async function invTakeToChar(it, chId) {
   invToast(lastErr ? lastErr.message : 'Nikam se nevejde — uvolněte místo nebo použijte přesné přetažení.');
   return false;
 }
-/** Klientské hledání volného místa v mřížce (server stejně validuje znovu). */
-function invFindSpot(cont, items, it) {
+/** Klientské hledání volného místa v mřížce (server stejně validuje znovu).
+    forceRot: hledat jen pro dané otočení. */
+function invFindSpot(cont, items, it, forceRot = null) {
   const cells = new Set((cont.container.cells || []).map(c => c.x + ',' + c.y));
-  const rects = items.filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === cont.id && i.id !== it.id)
-    .map(i => ({ x: i.loc.x, y: i.loc.y, w: i.rot ? i.h : i.w, h: i.rot ? i.w : i.h }));
+  const occupied = new Set();
+  items.filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === cont.id && i.id !== it.id)
+    .forEach(i => invPlacedCells(i, i.loc.x, i.loc.y, i.rot).forEach(c => occupied.add(c.x + ',' + c.y)));
   const maxX = Math.max(...[...cells].map(k => +k.split(',')[0]), 0);
   const maxY = Math.max(...[...cells].map(k => +k.split(',')[1]), 0);
-  for (const rot of [0, 1]) {
-    const w = rot ? it.h : it.w, h0 = rot ? it.w : it.h;
+  for (const rot of (forceRot === null ? [0, 1] : [forceRot])) {
     for (let y = 0; y <= maxY; y++) for (let x = 0; x <= maxX; x++) {
       let ok = true;
-      for (let dx = 0; dx < w && ok; dx++) for (let dy = 0; dy < h0 && ok; dy++)
-        if (!cells.has((x + dx) + ',' + (y + dy))) ok = false;
-      if (ok) for (const r of rects)
-        if (x < r.x + r.w && r.x < x + w && y < r.y + r.h && r.y < y + h0) { ok = false; break; }
+      for (const p of invPlacedCells(it, x, y, rot)) {
+        const k = p.x + ',' + p.y;
+        if (!cells.has(k) || occupied.has(k)) { ok = false; break; }
+      }
       if (ok) return { x, y, rot };
     }
-    if (it.w === it.h) break; // čtverec — otočení nic nezmění
+    if (forceRot === null && it.w === it.h) break;
   }
   return null;
 }
@@ -4209,10 +4252,25 @@ function invAttachDrag(el, it) {
     const start = { x: e.clientX, y: e.clientY };
     let moved = false, ghost = null, rot = it.rot;
     const cell = 44;
+    // které políčko tokenu držím (u vícepolíčkových předmětů určuje cíl přesunu)
+    let offX = 0, offY = 0;
+    {
+      const r0 = el.getBoundingClientRect();
+      const gw = it.rot ? it.h : it.w, gh = it.rot ? it.w : it.h;
+      offX = Math.min(gw - 1, Math.max(0, Math.floor((e.clientX - r0.left) / (r0.width / gw))));
+      offY = Math.min(gh - 1, Math.max(0, Math.floor((e.clientY - r0.top) / (r0.height / gh))));
+    }
     const ghostSize = () => {
       const w = rot ? it.h : it.w, h0 = rot ? it.w : it.h;
       ghost.style.width = (w * cell) + 'px'; ghost.style.height = (h0 * cell) + 'px';
-      const img = ghost.querySelector('img'); if (img) img.classList.toggle('rot90', !!rot);
+      // duch se drží prstu/kurzoru přesně za chycené políčko
+      ghost.style.transform = `translate(${-(offX + 0.5) * cell}px, ${-(offY + 0.5) * cell}px)`;
+      const img = ghost.querySelector('img');
+      if (img) {
+        img.classList.toggle('rot90', !!rot);
+        if (rot) { img.style.width = (h0 * cell) + 'px'; img.style.height = (w * cell) + 'px'; }
+        else { img.style.width = ''; img.style.height = ''; }
+      }
     };
     const clearHl = () => document.querySelectorAll('.drop-ok').forEach(x => x.classList.remove('drop-ok'));
     const onMove = ev => {
@@ -4223,7 +4281,7 @@ function invAttachDrag(el, it) {
         document.body.appendChild(ghost);
         ghostSize();
         el.classList.add('drag-src');
-        invMarkTargets(it, rot); // zeleně kam to jde, červeně kam ne
+        invMarkTargets(it, rot, offX, offY); // zeleně kam to jde, červeně kam ne
       }
       if (!moved) return;
       ghost.style.left = ev.pageX + 'px'; ghost.style.top = ev.pageY + 'px';
@@ -4232,7 +4290,12 @@ function invAttachDrag(el, it) {
       if (t && t.el) t.el.classList.add('drop-ok');
     };
     const onKey = ev => { // R otočí token během tažení (desktop)
-      if ((ev.key === 'r' || ev.key === 'R') && moved) { rot = rot ? 0 : 1; ghostSize(); invMarkTargets(it, rot); }
+      if ((ev.key === 'r' || ev.key === 'R') && moved) {
+        const gh = rot ? it.w : it.h; // výška před otočením
+        [offX, offY] = [gh - 1 - offY, offX]; // kotva se otočí s předmětem
+        rot = rot ? 0 : 1;
+        ghostSize(); invMarkTargets(it, rot, offX, offY);
+      }
     };
     const cleanup = () => {
       document.removeEventListener('pointermove', onMove);
@@ -4246,6 +4309,7 @@ function invAttachDrag(el, it) {
       cleanup();
       if (!moved) { invDetail(it.id); return; }
       if (!t) return;
+      if (t.type === 'move' && t.to.t === 'grid') { t.to.x -= offX; t.to.y -= offY; } // kotva: cílová buňka = ta, za kterou držím
       try {
         if (t.type === 'merge') await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { mergeInto: t.into } });
         else if (t.type === 'take') { if (!await invTakeToChar(it, t.charId)) return; }
@@ -4510,6 +4574,13 @@ async function invDetail(instId) {
       <div class="invd-imgwrap">${it.tokenImageId ? `<img class="invd-img" src="${imgUrl(it.tokenImageId)}" alt="">` : '<div class="invd-img invd-noimg">📦</div>'}</div>
       <h2 class="refpane-title">${esc(it.name)} ${!it.identified ? '<span class="tag" title="Neidentifikováno">❓ neidentifikováno</span>' : ''} ${it.broken ? '<span class="tag" style="color:var(--danger)">rozbitý</span>' : ''}</h2>
       ${it.publicText ? `<p>${esc(it.publicText)}</p>` : ''}
+      <p class="invd-meta">
+        <b>Velikost:</b> ${it.w} × ${it.h} (${it.w * it.h} ${it.w * it.h === 1 ? 'políčko' : it.w * it.h < 5 ? 'políčka' : 'políček'})<br>
+        <b>Lze nasadit:</b> ${!it.wearable ? 'nejde nosit — patří do batohů, kapes a na zem'
+    : (!it.slots || !it.slots.length) ? 'kamkoli, kam se vejde'
+      : esc(it.slots.map(invSlotLabel).join(', '))}
+        ${it.twoHanded ? '<br><b>Obouruční</b> — zabere obě ruce' : ''}
+      </p>
       ${it.secretText ? `<div class="invd-secret"><b>🔮 Odhalené vlastnosti</b><br>${esc(it.secretText)}</div>` : ''}
       ${it.stackable ? `
       <div class="invd-hp">
@@ -4534,6 +4605,7 @@ async function invDetail(instId) {
         ${it.articleId ? `<a href="#/c/${state.campaign.id}/a/${it.articleId}"><button class="small ghost">📄 Článek předmětu</button></a>` : ''}
       </div>
       ${it.noDrop ? '<p class="muted" style="margin-top:10px">📌 Tento předmět nejde odhodit na zem.</p>' : ''}
+      <div data-k="artbox" class="invd-art"></div>
       ${it.container ? `
       <h3 style="margin:16px 0 6px">🎒 Obsah</h3>
       ${contents.length ? contents.map(c => `<div class="invd-contitem" data-open-inst="${c.id}">
@@ -4541,6 +4613,16 @@ async function invDetail(instId) {
         <span>${esc(c.name)}</span>${c.stackable && c.qty > 1 ? `<span class="tag">×${c.qty}</span>` : ''}
       </div>`).join('') : '<p class="muted">Prázdný.</p>'}` : ''}
     </div>`;
+  // obsah článku předmětu (bloky filtruje server podle práv postavy)
+  const artBox = el.querySelector('[data-k=artbox]');
+  if (it.articleId && artBox) {
+    api(`/api/articles/${it.articleId}`).then(a => {
+      if (!a.blocks.length && !a.description) return;
+      artBox.innerHTML = `<hr class="block-divider">
+        ${a.description ? `<p class="muted">${esc(a.description)}</p>` : ''}
+        ${a.blocks.map(b => renderBlockHTML(b, a.owned)).join('')}`;
+    }).catch(() => { });
+  }
   // zavření detailu se vrací do panelu zóny (pokud byl otevřený)
   const back = () => {
     document.querySelectorAll('[data-contbox].sel').forEach(b => b.classList.remove('sel'));
@@ -4575,8 +4657,23 @@ async function invDetail(instId) {
     catch (e) { invToast(e.message); }
   };
   if (q('rot')) q('rot').onclick = async () => {
-    try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: it.loc, rot: it.rot ? 0 : 1 } }); invRefresh(); invDetailReload(it.id); }
-    catch (e) { invToast(e.message); }
+    const newRot = it.rot ? 0 : 1;
+    try {
+      await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: it.loc, rot: newRot } });
+    } catch (e) {
+      // na místě se otočený nevejde → zkusit jiné volné místo v témže kontejneru
+      if (it.loc.t === 'grid') {
+        const all = [...invUI.items, ...(invUI.zoneItems || [])];
+        const cont = all.find(i => i.id === it.loc.cId);
+        const spot = cont && invFindSpot(cont, all, it, newRot);
+        if (spot) {
+          try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: { t: 'grid', cId: cont.id, x: spot.x, y: spot.y }, rot: newRot } }); invRefresh(); invDetailReload(it.id); return; }
+          catch (e2) { invToast(e2.message); return; }
+        }
+      }
+      invToast(e.message); return;
+    }
+    invRefresh(); invDetailReload(it.id);
   };
   if (q('split')) q('split').onclick = async () => {
     const n = parseInt(prompt(`Kolik kusů oddělit? (1–${it.qty - 1})`, '1'), 10);

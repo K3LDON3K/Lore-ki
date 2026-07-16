@@ -1464,12 +1464,29 @@ route('PUT', '/api/articles/:id', async (req, res, params, userId, query) => {
         container = { cells };
       }
     }
+    let shape = null; // tvar tokenu: normalizované buňky; w/h se dopočítá z obálky
+    if (Array.isArray(it.shape) && it.shape.length) {
+      const seen = new Set(); const cellsS = [];
+      for (const c of it.shape.slice(0, 36)) {
+        const x = cl(c.x, 0, 5, -1), y = cl(c.y, 0, 5, -1);
+        if (x < 0 || y < 0) continue;
+        const k = x + ',' + y; if (seen.has(k)) continue; seen.add(k);
+        cellsS.push({ x, y });
+      }
+      if (cellsS.length) {
+        const mx = Math.min(...cellsS.map(c => c.x)), my = Math.min(...cellsS.map(c => c.y));
+        cellsS.forEach(c => { c.x -= mx; c.y -= my; });
+        shape = cellsS;
+      }
+    }
+    const shW = shape ? Math.max(...shape.map(c => c.x)) + 1 : cl(it.w, 1, 6, 1);
+    const shH = shape ? Math.max(...shape.map(c => c.y)) + 1 : cl(it.h, 1, 6, 1);
     a.item = {
       weight: Math.max(0, parseFloat(it.weight) || 0),
       price: String(it.price || '').slice(0, 40),
       rarity: String(it.rarity || '').slice(0, 40),
       tokenImageId: parseInt(it.tokenImageId, 10) || null,
-      w: cl(it.w, 1, 6, 1), h: cl(it.h, 1, 6, 1),
+      w: shW, h: shH, shape,
       wearable: !!it.wearable, twoHanded: !!it.twoHanded,
       stackable: !!it.stackable, stackMax: cl(it.stackMax, 1, 99, 10),
       noDrop: !!it.noDrop,
@@ -1680,11 +1697,26 @@ function instShape(inst) {
   const w = Math.max(1, parseInt(m.w, 10) || 1), h = Math.max(1, parseInt(m.h, 10) || 1);
   return inst.rot ? { w: h, h: w } : { w, h };
 }
+/** Buňky tvaru předmětu (normalizované, bez otočení). Bez uloženého tvaru = plný obdélník. */
+function shapeCells(m) {
+  if (Array.isArray(m.shape) && m.shape.length) return m.shape;
+  const w = Math.max(1, parseInt(m.w, 10) || 1), h = Math.max(1, parseInt(m.h, 10) || 1);
+  const out = [];
+  for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) out.push({ x, y });
+  return out;
+}
+/** Absolutní buňky tvaru položené na (X,Y), případně otočené o 90°. */
+function placedCells(m, X, Y, rot) {
+  const h = Math.max(1, parseInt(m.h, 10) || 1);
+  return shapeCells(m).map(c => rot
+    ? { x: X + (h - 1 - c.y), y: Y + c.x }
+    : { x: X + c.x, y: Y + c.y });
+}
 /** Kolik políček předmět zabírá na TĚLE (kontejner může mít vlastní údaj „bodySize“). */
 function instBodyCells(inst) {
   const m = itemMeta(instArticle(inst));
   if (m.container && m.bodySize) return Math.max(1, parseInt(m.bodySize, 10) || 1);
-  return Math.max(1, (parseInt(m.w, 10) || 1) * (parseInt(m.h, 10) || 1));
+  return shapeCells(m).length;
 }
 /** Kořenové umístění — vynoří se z kontejneru na tělo/zónu. */
 function rootLoc(inst) {
@@ -1720,6 +1752,7 @@ function instView(inst, viewer) {
     wearable: !!m.wearable, twoHanded: !!m.twoHanded, stackable: !!m.stackable,
     noDrop: !!m.noDrop, bodyCells: instBodyCells(inst),
     slots: Array.isArray(m.slots) ? m.slots : [],
+    shape: shapeCells(m),
     container: m.container ? { cells: m.container.cells } : null,
     publicText: String(m.publicText || ''),
     name: full ? art.title : (m.unidentifiedName || 'Neznámý předmět')
@@ -1784,16 +1817,16 @@ function placeError(inst, to, rot, viewer) {
     if (cont.id === inst.id) return 'Předmět nejde vložit sám do sebe.';
     if (!canTouchInst(cont, viewer)) return 'K tomuto kontejneru nemáte přístup.';
     const cells = new Set((cm.container.cells || []).map(c => c.x + ',' + c.y));
-    const w = rot ? (parseInt(m.h, 10) || 1) : (parseInt(m.w, 10) || 1);
-    const h = rot ? (parseInt(m.w, 10) || 1) : (parseInt(m.h, 10) || 1);
     const x = parseInt(to.x, 10), y = parseInt(to.y, 10);
     if (isNaN(x) || isNaN(y)) return 'Neplatná pozice.';
-    for (let dx = 0; dx < w; dx++) for (let dy = 0; dy < h; dy++)
-      if (!cells.has((x + dx) + ',' + (y + dy))) return 'Předmět se sem nevejde.';
+    // skutečný tvar (kříž, L…), ne jen obdélník
+    const mine = placedCells(m, x, y, rot);
+    for (const c of mine) if (!cells.has(c.x + ',' + c.y)) return 'Předmět se sem nevejde.';
+    const mineSet = new Set(mine.map(c => c.x + ',' + c.y));
     for (const oth of db.itemInstances.filter(i => i.id !== inst.id && i.loc && i.loc.t === 'grid' && i.loc.cId === cont.id)) {
-      const os = instShape(oth);
-      if (x < oth.loc.x + os.w && oth.loc.x < x + w && y < oth.loc.y + os.h && oth.loc.y < y + h)
-        return 'Místo je obsazené.';
+      const om = itemMeta(instArticle(oth));
+      for (const c of placedCells(om, oth.loc.x, oth.loc.y, oth.rot))
+        if (mineSet.has(c.x + ',' + c.y)) return 'Místo je obsazené.';
     }
     return null;
   }

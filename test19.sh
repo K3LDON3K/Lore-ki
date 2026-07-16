@@ -191,4 +191,19 @@ req i_h1.jar PUT "/api/inv/instances/$OID/move" "{\"to\":{\"t\":\"zone\",\"zId\"
 check_has "předmět v zóně je otočený" "$(req i_h1.jar GET /api/inv/zones/$Z/items)" '"rot":1'
 req i_h1.jar PUT "/api/inv/instances/$OID/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"handR\"}}" > /dev/null
 
+echo "== tvary: L-předmět nechá roh volný =="
+LKO=$(mk "Luk L" '{"shape":[{"x":0,"y":0},{"x":0,"y":1},{"x":1,"y":1}],"identifiedDefault":true}')
+KAM=$(mk "Kámen" '{"shape":[{"x":0,"y":0}],"identifiedDefault":true}')
+BAT2=$(mk "Kapsička" '{"wearable":true,"slots":["belt"],"bodySize":1,"identifiedDefault":true,"container":{"cells":[{"x":0,"y":0,"c":"g"},{"x":1,"y":0,"c":"g"},{"x":0,"y":1,"c":"g"},{"x":1,"y":1,"c":"g"}]}}')
+KID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$BAT2,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"belt\"}}" | grep -o '[0-9]*')
+LID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$LKO,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
+SID2=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$KAM,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
+req i_h1.jar PUT "/api/inv/instances/$LID/move" "{\"to\":{\"t\":\"grid\",\"cId\":$KID,\"x\":0,\"y\":0}}" > /dev/null
+X=$(req i_h1.jar PUT "/api/inv/instances/$SID2/move" "{\"to\":{\"t\":\"grid\",\"cId\":$KID,\"x\":1,\"y\":0}}")
+check_has "1×1 se vejde do volného rohu L-tvaru" "$X" '"ok":true'
+X=$(req i_h1.jar PUT "/api/inv/instances/$SID2/move" "{\"to\":{\"t\":\"grid\",\"cId\":$KID,\"x\":0,\"y\":1}}")
+check_has "obsazená buňka L-tvaru odmítne" "$X" "obsazen"
+V=$(req i_d.jar GET /api/articles/$LKO)
+check_has "w/h dopočítané z tvaru (2×2)" "$V" '"w":2'
+
 echo; echo "🎉 Testy grafického inventáře prošly."

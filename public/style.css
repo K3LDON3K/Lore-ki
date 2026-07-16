@@ -1025,3 +1025,25 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 /* mini pilulka (očička u stat bloku) + řádek popisku */
 .pick-toggle.mini { padding: 1px 7px; font-size: 11px; border-radius: 10px; }
 .sb-lblrow { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 5px; }
+
+/* ---- inventář: iterace 7 — jednotné kompaktní sloty, meta v detailu ---- */
+.inv-slot2, .inv-slot2.cap1, .inv-slot2.cap2, .inv-slot2.cap3, .inv-slot2.cap4 { width: 80px; }
+.inv-slot2 .sl-body, .inv-slot2.cap1 .sl-body, .inv-slot2.cap2 .sl-body,
+.inv-slot2.cap3 .sl-body, .inv-slot2.cap4 .sl-body { height: 58px; }
+.inv-slot2 .sl-name { font-size: 10px; padding: 3px 3px 2px; }
+.sl-cap { opacity: .65; font-weight: 600; }
+.inv-group-slots { gap: 6px; align-items: stretch; }
+.inv-doll { gap: 10px; }
+.inv-group-label { margin-bottom: 3px; }
+.invd-meta { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.invd-art { margin-top: 8px; }
+.invd-art img { max-width: 100%; }
+.inv-ghost { transform: none; } /* posun ducha řídí kotva (inline transform) */
+
+/* tvar tokenu v editoru + správně otočený obrázek */
+.cg-cell.c-s { background: var(--accent-soft); border-color: var(--accent); }
+.inv-token img.rot90 {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(90deg);
+  object-fit: contain;
+}
