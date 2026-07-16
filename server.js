@@ -79,6 +79,27 @@ const MASTER_PASSWORD = (() => {
   }
   return gen;
 })();
+// Systémové sloty: nejdou smazat, jdou jen přesouvat mezi sloupci. Vše ostatní si DM dotvoří.
+const BODY_SLOTS = { head: 1, torso: 1, cloak: 1, back: 1, handL: 1, handR: 1 };
+const SYSTEM_SLOT_LABELS = { head: 'Hlava', torso: 'Trup', cloak: 'Plášť / toulec', back: 'Záda / batoh', handL: 'Levá ruka', handR: 'Pravá ruka' };
+// dřívější vestavěné sloty — u existujících kampaní se převedou na vlastní (mazatelné)
+const LEGACY_SLOTS = {
+  neck: 'Krk', belt: 'Opasek', gloves: 'Rukavice', wristR: 'Zápěstí (pravé)', wristL: 'Zápěstí (levé)',
+  forearm: 'Předloktí', ring1: 'Prsten 1', ring2: 'Prsten 2', ring3: 'Prsten 3', ring4: 'Prsten 4',
+  pants: 'Kalhoty', boots: 'Boty'
+};
+/** Pořadí slotů kampaně (systémové + vlastní; uložené pořadí se doplní o chybějící). */
+function slotOrderOf(camp) {
+  const all = [...Object.keys(BODY_SLOTS), ...((camp && camp.customSlots) || []).map(s => s.key)];
+  const saved = Array.isArray(camp && camp.slotOrder) ? camp.slotOrder.filter(k => all.includes(k)) : [];
+  return [...new Set([...saved, ...all])];
+}
+/** Sloupec slotu: 1 = levý (výchozí pro systémové), 2 = pravý (výchozí pro vlastní). */
+function slotColOf(camp, key) {
+  const c = camp && camp.slotCols && camp.slotCols[key];
+  return c === 1 || c === 2 ? c : (BODY_SLOTS[key] ? 1 : 2);
+}
+
 if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 db.settings = db.settings || { appName: APP_NAME_DEFAULT }; // nastavení aplikace
 db.notes = db.notes || []; // migrace starších dat
@@ -1683,26 +1704,6 @@ route('DELETE', '/api/notes/:id', async (req, res, params, userId, query) => {
 
 // Sloty na těle: kapacita v políčkách. Na těle se tvar tokenu neřeší — slot je „zásuvka“
 // s limitem políček (dohodnuto: štít 2×2 se do ruky vejde, rozhoduje počet políček).
-// Systémové sloty: nejdou smazat, jdou jen přesouvat mezi sloupci. Vše ostatní si DM dotvoří.
-const BODY_SLOTS = { head: 1, torso: 1, cloak: 1, back: 1, handL: 1, handR: 1 };
-const SYSTEM_SLOT_LABELS = { head: 'Hlava', torso: 'Trup', cloak: 'Plášť / toulec', back: 'Záda / batoh', handL: 'Levá ruka', handR: 'Pravá ruka' };
-// dřívější vestavěné sloty — u existujících kampaní se převedou na vlastní (mazatelné)
-const LEGACY_SLOTS = {
-  neck: 'Krk', belt: 'Opasek', gloves: 'Rukavice', wristR: 'Zápěstí (pravé)', wristL: 'Zápěstí (levé)',
-  forearm: 'Předloktí', ring1: 'Prsten 1', ring2: 'Prsten 2', ring3: 'Prsten 3', ring4: 'Prsten 4',
-  pants: 'Kalhoty', boots: 'Boty'
-};
-/** Pořadí slotů kampaně (systémové + vlastní; uložené pořadí se doplní o chybějící). */
-function slotOrderOf(camp) {
-  const all = [...Object.keys(BODY_SLOTS), ...((camp && camp.customSlots) || []).map(s => s.key)];
-  const saved = Array.isArray(camp && camp.slotOrder) ? camp.slotOrder.filter(k => all.includes(k)) : [];
-  return [...new Set([...saved, ...all])];
-}
-/** Sloupec slotu: 1 = levý (výchozí pro systémové), 2 = pravý (výchozí pro vlastní). */
-function slotColOf(camp, key) {
-  const c = camp && camp.slotCols && camp.slotCols[key];
-  return c === 1 || c === 2 ? c : (BODY_SLOTS[key] ? 1 : 2);
-}
 const HANDS = ['handR', 'handL'];
 /** Kapacity slotů kampaně: vestavěné + vlastní (DM je zakládá na stránce Inventář). */
 function slotCapsFor(camp) {

@@ -1082,3 +1082,11 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .inv-col2 .inv-slot2 .sl-body { height: 64px; }
 .inv-col2 .inv-group-label { margin-bottom: 2px; }
 .inv-col2 .inv-slot-add { align-self: stretch; height: 44px; }
+
+/* ---- inventář: čtvercové sloty, kontejnery vedle sebe, titulky na střed ---- */
+.inv-col2 { min-width: 116px; }
+.inv-col2 .inv-slot2 { width: 116px; }
+.inv-col2 .inv-slot2 .sl-body { height: 90px; } /* box ≈ čtverec i s hlavičkou */
+.inv-cont-title { text-align: center; }
+/* kontejnery vedle sebe, když se vejdou; při otevřeném panelu se samy zalomí */
+.inv-conts { flex-direction: row; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: 16px; }

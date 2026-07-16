@@ -3100,7 +3100,10 @@ async function renderEditor(aid) {
         <div class="formsec">
           <h4>📍 Kam jde předmět nasadit</h4>
           <p class="muted" style="margin:0 0 8px">Vyberte sloty, nebo <b>Kamkoli</b>. Velikost se na těle neřeší — tvar hraje roli až v batozích. <b>Nic nevybráno = předmět nejde nosit.</b></p>
-          <input id="iSlotFilter" placeholder="🔍 Najít slot… (např. prsten)" style="margin-bottom:8px; max-width:280px">
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap">
+            <input id="iSlotFilter" placeholder="🔍 Najít slot… (např. prsten)" style="max-width:280px">
+            <button type="button" class="small secondary" id="iSlotNew">＋ nový slot</button>
+          </div>
           <div class="pick-group" style="margin-bottom:6px">${pill('id="iAnywhere"', '🌐 Kamkoli', !!it.wearable && !(it.slots || []).length)}</div>
           ${(() => {
             const customs = (state.campaign && state.campaign.customSlots) || [];
@@ -3352,6 +3355,25 @@ async function renderEditor(aid) {
       drawGrid();
       const isCont = $app.querySelector('#iIsCont');
       if (isCont) isCont.onchange = () => { $app.querySelector('#iContWrap').style.display = isCont.checked ? '' : 'none'; };
+      // ＋ nový slot rovnou z editoru — vytvoří se v kampani a hned se předvybere
+      const slotNewBtn = $app.querySelector('#iSlotNew');
+      if (slotNewBtn) slotNewBtn.onclick = () => invNewSlotDialog(null, null, (key, label) => {
+        state.campaign.customSlots = [...(state.campaign.customSlots || []), { key, label, cap: 1 }];
+        // pilulka do skupiny „Vlastní sloty“ (když neexistuje, založí se)
+        let grp = [...$app.querySelectorAll('.slotgrp')].find(g => g.querySelector('.inv-group-label').textContent === 'Vlastní sloty');
+        if (!grp) {
+          const last = [...$app.querySelectorAll('.slotgrp')].pop();
+          grp = h(`<div class="slotgrp" data-grp><div class="inv-group-label">Vlastní sloty</div><div class="pick-group"></div></div>`).firstElementChild;
+          last.after(grp);
+        }
+        grp.querySelector('.pick-group').insertAdjacentHTML('beforeend', pill(`class="iSlot" value="${key}"`, esc(label), true));
+        const nu = grp.querySelector(`.iSlot[value="${key}"]`);
+        const anyEl2 = $app.querySelector('#iAnywhere');
+        nu.addEventListener('change', () => { // stejná logika jako u ostatních pilulek
+          if (!nu.checked && anyEl2 && anyEl2.checked) { anyEl2.checked = false; const l = anyEl2.closest('.pick-toggle'); if (l) l.classList.remove('on'); }
+        });
+        if (anyEl2 && anyEl2.checked) { anyEl2.checked = false; const l = anyEl2.closest('.pick-toggle'); if (l) l.classList.remove('on'); }
+      });
       // hledání slotu: filtruje pilulky, prázdné oblasti se schovají
       const slotFilter = $app.querySelector('#iSlotFilter');
       if (slotFilter) slotFilter.oninput = () => {
@@ -4121,8 +4143,10 @@ function invTokenEl(it, cell, fit = false) {
   el.addEventListener('contextmenu', e => {
     e.preventDefault(); e.stopPropagation();
     const items = [{ icon: 'ℹ️', label: 'Podrobnosti', action: () => invDetail(it.id) }];
-    if (it.loc && (it.loc.t === 'grid' || it.loc.t === 'zone'))
+    if (it.loc && (it.loc.t === 'grid' || it.loc.t === 'zone') && !(it.w === 1 && it.h === 1))
       items.push({ icon: '⟳', label: 'Otočit', action: async () => { if (await invRotate(it)) invRefresh(); } });
+    if (it.stackable && it.qty > 1)
+      items.push({ icon: '✂️', label: 'Rozdělit stack…', action: async () => { if (await invSplitStack(it)) invRefresh(); } });
     for (const z of invUI.zones) {
       if (it.loc && it.loc.t === 'zone' && it.loc.zId === z.id) continue; // tam už leží
       items.push({
@@ -4225,6 +4249,16 @@ function invDropTarget(ev, dragging) {
     if (takeEl) return { type: 'take', charId: +takeEl.dataset.dropTake, el: takeEl };
   }
   return null;
+}
+
+/** Rozdělení stacku: oddělená část jde do otevřené / první zóny. */
+async function invSplitStack(it) {
+  const n = parseInt(prompt(`Kolik kusů oddělit? (1–${it.qty - 1})`, '1'), 10);
+  if (!n) return false;
+  const zId = invUI.zoneOpen || (invUI.zones[0] && invUI.zones[0].id);
+  if (!zId) { invToast('Nejdřív musí DM založit zónu podlahy.'); return false; }
+  try { await api(`/api/inv/instances/${it.id}/split`, { method: 'POST', body: { qty: n, to: { t: 'zone', zId } } }); return true; }
+  catch (e) { invToast(e.message); return false; }
 }
 
 /** Chytré otočení: na místě, a když se nevejde, najde jiné volné místo v témže kontejneru. */
@@ -4372,7 +4406,7 @@ function invAttachDrag(el, it) {
       if (t && t.el) t.el.classList.add('drop-ok');
     };
     const onKey = ev => { // R otočí token během tažení (desktop)
-      if ((ev.key === 'r' || ev.key === 'R') && moved) {
+      if ((ev.key === 'r' || ev.key === 'R') && moved && !(it.w === 1 && it.h === 1)) {
         const gh = rot ? it.w : it.h; // výška před otočením
         [offX, offY] = [gh - 1 - offY, offX]; // kotva se otočí s předmětem
         rot = rot ? 0 : 1;
@@ -4407,9 +4441,10 @@ function invAttachDrag(el, it) {
 }
 
 /** Mřížka kontejneru: buňky s barvou zóny + tokeny uvnitř. */
-function invContGridEl(cont, items, cell = 54) {
+function invContGridEl(cont, items, cell = null) {
   const cells = (cont.container && cont.container.cells) || [];
   const maxX = Math.max(...cells.map(c => c.x), 0), maxY = Math.max(...cells.map(c => c.y), 0);
+  if (cell === null) cell = (maxY + 1 >= 4 || maxX + 1 >= 6) ? 42 : 54; // velké mřížky kompaktněji
   const wrap = document.createElement('div');
   wrap.className = 'contgrid';
   wrap.style.width = ((maxX + 1) * cell) + 'px';
@@ -4663,7 +4698,8 @@ async function invDetail(instId) {
     ? [...invUI.items, ...(invUI.zoneItems || [])].filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === it.id)
     : [];
   const dm = canEdit();
-  const zoneBack = invUI.zoneOpen && invUI.zones.find(z => z.id === invUI.zoneOpen);
+  const fromZone = it.loc && it.loc.t === 'zone' && invUI.zoneOpen === it.loc.zId;
+  const zoneBack = fromZone && invUI.zones.find(z => z.id === invUI.zoneOpen);
   el.innerHTML = `
     <div class="refpane-head">
       ${zoneBack ? `<button class="small ghost" data-k="back" title="Zpět na zónu">← 📍 ${esc(zoneBack.name)}</button>` : ''}
@@ -4699,7 +4735,7 @@ async function invDetail(instId) {
       </div>`}
       <div class="toolbar" style="margin:14px 0 0">
         ${it.loc && it.loc.t === 'zone' ? `<div class="invd-takes" title="Vzít si — kliknutím na postavu">${invUI.chars.map(c => `<button class="small" data-take="${c.id}" title="Vzít si (${esc(c.name)})">🫳 ${esc(c.name)}</button>`).join('')}</div>` : ''}
-        ${it.loc && (it.loc.t === 'grid' || it.loc.t === 'zone') ? `<button class="small secondary" data-k="rot">⟳ Otočit</button>` : ''}
+        ${it.loc && (it.loc.t === 'grid' || it.loc.t === 'zone') && !(it.w === 1 && it.h === 1) ? `<button class="small secondary" data-k="rot">⟳ Otočit</button>` : ''}
         ${dm ? `<button class="small secondary" data-k="ident">${it.identified ? '🔒 Zrušit identifikaci' : '🔓 Identifikovat'}</button>` : ''}
         ${(dm || it.broken) ? `<button class="small danger" data-k="del">Odstranit předmět</button>` : ''}
         ${it.articleId ? `<a href="#/c/${state.campaign.id}/a/${it.articleId}"><button class="small ghost">📄 Článek předmětu</button></a>` : ''}
@@ -4759,15 +4795,7 @@ async function invDetail(instId) {
     catch (e) { invToast(e.message); }
   };
   if (q('rot')) q('rot').onclick = async () => { if (await invRotate(it)) { invRefresh(); invDetailReload(it.id); } };
-  if (q('split')) q('split').onclick = async () => {
-    const n = parseInt(prompt(`Kolik kusů oddělit? (1–${it.qty - 1})`, '1'), 10);
-    if (!n) return;
-    // oddělená část jde na zem — do první zóny (odtud si ji rozeberou)
-    const z = invUI.zones[0];
-    if (!z) return invToast('Nejdřív musí DM založit zónu podlahy.');
-    try { await api(`/api/inv/instances/${it.id}/split`, { method: 'POST', body: { qty: n, to: { t: 'zone', zId: z.id } } }); done(); }
-    catch (e) { invToast(e.message); }
-  };
+  if (q('split')) q('split').onclick = async () => { if (await invSplitStack(it)) done(); };
   if (q('del')) q('del').onclick = async () => {
     if (!await confirmDialog('Předmět bude nenávratně odstraněn.', { title: 'Odstranit předmět', ok: 'Odstranit', danger: true })) return;
     try { await api(`/api/inv/instances/${it.id}`, { method: 'DELETE' }); done(); }
@@ -4782,7 +4810,7 @@ async function invDetailReload(instId) {
   }, 200);
 }
 /** Dialog pro nový slot postavy: název, velikost, umístění (existující nebo nová oblast). */
-function invNewSlotDialog(_unused, edit = null) {
+function invNewSlotDialog(_unused, edit = null, onCreated = null) {
   const overlay = h(`<div class="modal-overlay"><div class="modal">
     <h3 style="margin:0 0 10px">${edit ? (edit.builtin ? '✎ Přesunout slot' : '✎ Upravit slot') : '＋ Nový slot postavy'}</h3>
     <p class="muted" style="margin-top:0">${edit ? 'Změna platí pro všechny postavy v kampani.' : 'Slot se objeví u <b>všech postav v kampani</b>.'}${edit && edit.builtin ? ' Systémový slot jde jen přesunout (sloupec, pořadí šipkami na nákresu).' : ''}</p>
@@ -4812,7 +4840,8 @@ function invNewSlotDialog(_unused, edit = null) {
         const body = edit.builtin ? { col } : { label, col };
         await api(`/api/campaigns/${state.campaign.id}/inv/slots/${edit.key}`, { method: 'PUT', body });
       } else {
-        await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body: { label, col } });
+        const r = await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body: { label, col } });
+        if (onCreated) { overlay.remove(); onCreated(r.key, label); return; }
       }
       overlay.remove(); invDrawBody();
     } catch (e) { q('err').textContent = e.message; }
