@@ -171,7 +171,8 @@ print('✅ OK: neidentifikované kusy se hráči ve výskytech neukazují')"
 echo "== vlastní sloty + povolené sloty předmětu =="
 X=$(req i_h1.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1}')
 check_has "slot nezaloží hráč" "$X" "error"
-SKEY=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+SKEY=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1,"group":"Doplňky"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+check_has "slot nese oblast (skupinu)" "$(req i_h1.jar GET /api/inv/char/$BAR)" "Doplňky"
 BRYLE=$(mk "Brýle" "{\"w\":1,\"h\":1,\"wearable\":true,\"identifiedDefault\":true,\"slots\":[\"$SKEY\"]}")
 BR=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$BRYLE,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
 X=$(req i_h1.jar PUT "/api/inv/instances/$BR/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"head\"}}")

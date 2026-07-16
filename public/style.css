@@ -1021,3 +1021,7 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .drop-can { box-shadow: inset 0 0 0 2px rgba(46, 158, 91, .65) !important; }
 .drop-no { box-shadow: inset 0 0 0 2px rgba(214, 69, 80, .55) !important; opacity: .75; }
 .drop-ok { outline: 3px solid var(--accent) !important; }
+
+/* mini pilulka (očička u stat bloku) + řádek popisku */
+.pick-toggle.mini { padding: 1px 7px; font-size: 11px; border-radius: 10px; }
+.sb-lblrow { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 5px; }

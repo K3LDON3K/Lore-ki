@@ -901,7 +901,7 @@ function openCropper(file, cb, opts = {}) {
         <span class="muted" style="font-size:11px">pod 100 % vznikne průhledný okraj</span>
       </div>
       ${opts.checkbox ? `
-      <label class="vischeck" style="margin-top:8px"><input type="checkbox" data-k="extra" ${opts.checkbox.checked ? 'checked' : ''}> ${esc(opts.checkbox.label)}</label>` : ''}
+      <div class="pick-group" style="margin-top:8px">${pill('data-k="extra"', esc(opts.checkbox.label), !!opts.checkbox.checked)}</div>` : ''}
       ${opts.withSize ? `
       <div style="display:flex; gap:10px; align-items:center; margin-top:8px">
         <span class="blocktype">Velikost vložení:</span>
@@ -1144,6 +1144,10 @@ function openColorMenu(x, y, onColor, onClear) {
   setTimeout(() => document.addEventListener('mousedown', outside, true), 0);
 }
 
+/** Jedna toggle pilulka (checkbox skrytý uvnitř — čtení přes :checked funguje beze změny). */
+function pill(attrs, label, checked) {
+  return `<label class="pick-toggle${checked ? ' on' : ''}"><input type="checkbox" ${attrs}${checked ? ' checked' : ''} hidden><span class="pt-lbl">${label}</span></label>`;
+}
 // ---- toggle „pilulky" pro výběr postav / příjemců (nahrazují zaškrtávátka) ----
 // items: [{ id, label, sub?, checked?, disabled?, color? }]; cls = třída skrytého checkboxu (zpětné čtení :checked funguje beze změny).
 function pickGroup(items, cls, opts = {}) {
@@ -1381,7 +1385,7 @@ function blockFields(b, redraw) {
     f.innerHTML = richToolbarHTML() + `<div class="rich" contenteditable="true"></div>`;
     wireRich(f, c);
   } else if (b.type === 'list') {
-    f.innerHTML = `<label class="vischeck"><input type="checkbox" data-k="ordered"> číslovaný</label>
+    f.innerHTML = `<div class="pick-group">${pill('data-k="ordered"', 'číslovaný seznam', false)}</div>
       <textarea data-k="items" placeholder="Jedna položka na řádek"></textarea>`;
     const cb = f.querySelector('[data-k=ordered]'); cb.checked = !!c.ordered;
     cb.onchange = () => { c.ordered = cb.checked; };
@@ -1396,7 +1400,7 @@ function blockFields(b, redraw) {
           <option value="25">25 % šířky</option><option value="50">50 % šířky</option>
           <option value="75">75 % šířky</option><option value="100">100 % šířky</option>
         </select>
-        <label class="vischeck" title="Obrázek se zobrazí i v seznamu článků"><input type="checkbox" data-k="preview"> zobrazit v náhledu</label></div>
+        <span title="Obrázek se zobrazí i v seznamu článků">${pill('data-k="preview"', 'zobrazit v náhledu', false)}</span></div>
       <input data-k="caption" placeholder="Popisek (volitelné)" style="margin-top:8px">`;
     f.querySelector('[data-k=file]').onchange = (e) => {
       const file = e.target.files[0];
@@ -1446,12 +1450,12 @@ function blockFields(b, redraw) {
     cap.oninput = () => { c.caption = cap.value; };
   } else if (b.type === 'statblock') {
     // zaškrtávátko = zobrazit položku po uložení (výchozí: vše zaškrtnuto)
-    const showChk = (k) => `<input type="checkbox" data-sbshow="${k}" title="Zobrazit po uložení" style="width:auto; margin-left:auto">`;
+    const showChk = (k) => `<label class="pick-toggle mini" title="Zobrazit po uložení" style="margin-left:auto"><input type="checkbox" data-sbshow="${k}" hidden><span class="pt-lbl">👁</span></label>`;
     const F = (k, label) => `<div style="flex:1; min-width:130px">
-      <label style="display:flex; align-items:center; gap:6px">${label}${showChk(k)}</label>
+      <div class="sb-lblrow">${label}${showChk(k)}</div>
       <input data-sb="${k}"></div>`;
     const FT = (k, label, ph) => `
-      <label style="display:flex; align-items:center; gap:6px">${label}${showChk(k)}</label>
+      <div class="sb-lblrow">${label}${showChk(k)}</div>
       <textarea data-sb="${k}" placeholder="${ph || ''}"></textarea>`;
     f.innerHTML = `
       <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
@@ -1498,6 +1502,7 @@ function blockFields(b, redraw) {
     f.querySelectorAll('[data-sbshow]').forEach(chk => {
       const k = chk.dataset.sbshow;
       chk.checked = c.show[k] !== false;
+      const l = chk.closest('.pick-toggle'); if (l) l.classList.toggle('on', chk.checked); // stav nastavený kódem
       chk.onchange = () => { c.show[k] = chk.checked; };
     });
     f.querySelector('[data-k=tpl]').onchange = e => {
@@ -3076,12 +3081,11 @@ async function renderEditor(aid) {
 
         <div class="formsec">
           <h4>🧷 Vlastnosti</h4>
-          <div class="formsec-grid">
-            <label class="vischeck"><input type="checkbox" id="iWearable" ${it.wearable ? 'checked' : ''}> nositelný — jde na tělo postavy</label>
-            <label class="vischeck"><input type="checkbox" id="iTwoHanded" ${it.twoHanded ? 'checked' : ''}> obouruční — zabere obě ruce</label>
-            <label class="vischeck"><input type="checkbox" id="iNoDrop" ${it.noDrop ? 'checked' : ''}> nejde odhodit (quest předmět)</label>
-            <label class="vischeck"><input type="checkbox" id="iStackable" ${it.stackable ? 'checked' : ''}> stackovatelný
-              <span style="margin-left:6px">max <input id="iStackMax" type="number" min="1" max="99" value="${num(it.stackMax, 10)}" style="width:64px"> ks</span></label>
+          <div class="pick-group">
+            ${pill('id="iTwoHanded"', 'obouruční — zabere obě ruce', !!it.twoHanded)}
+            ${pill('id="iNoDrop"', 'nejde odhodit (quest předmět)', !!it.noDrop)}
+            ${pill('id="iStackable"', 'stackovatelný', !!it.stackable)}
+            <span class="vischeck" style="margin:0">max ve stacku <input id="iStackMax" type="number" min="1" max="99" value="${num(it.stackMax, 10)}" style="width:64px; margin-left:6px"> ks</span>
           </div>
           <div style="display:flex; gap:14px; align-items:center; margin-top:10px">
             <label style="margin:0">Max. životy (1–10)</label>
@@ -3091,13 +3095,14 @@ async function renderEditor(aid) {
         </div>
 
         <div class="formsec">
-          <h4>📍 Povolené sloty na postavě</h4>
-          <p class="muted" style="margin:0 0 8px">Kam smí být předmět nasazen. <b>Nic nevybráno = kamkoli</b>, kam se vejde kapacitou. Platí jen pro nositelné předměty.</p>
-          <div class="formsec-grid">
+          <h4>📍 Kam jde předmět nasadit</h4>
+          <p class="muted" style="margin:0 0 8px">Vyberte sloty, nebo <b>Kamkoli</b> (kam se vejde kapacitou). <b>Nic nevybráno = předmět nejde nosit</b> — patří jen do batohů, kapes a zón.</p>
+          <div class="pick-group">
+            ${pill('id="iAnywhere"', '🌐 Kamkoli (kam se vejde)', !!it.wearable && !(it.slots || []).length)}
             ${Object.entries(INV_SLOT_DEFS).map(([k, d]) =>
-              `<label class="vischeck"><input type="checkbox" class="iSlot" value="${k}" ${(it.slots || []).includes(k) ? 'checked' : ''}> ${d.l} <span class="muted">(${d.cap})</span></label>`).join('')}
+              pill(`class="iSlot" value="${k}"`, `${d.l} (${d.cap})`, (it.slots || []).includes(k))).join('')}
             ${((state.campaign && state.campaign.customSlots) || []).map(s =>
-              `<label class="vischeck"><input type="checkbox" class="iSlot" value="${s.key}" ${(it.slots || []).includes(s.key) ? 'checked' : ''}> ${esc(s.label)} <span class="muted">(${s.cap})</span></label>`).join('')}
+              pill(`class="iSlot" value="${s.key}"`, `${esc(s.label)} (${s.cap})`, (it.slots || []).includes(s.key))).join('')}
           </div>
         </div>
 
@@ -3116,7 +3121,7 @@ async function renderEditor(aid) {
         <div class="formsec">
           <h4>❓ Identifikace a popisy</h4>
           <p class="muted" style="margin:0 0 8px">Neidentifikovaný kus ukazuje hráči jen <b>obecný název</b> a <b>veřejný popis</b>. Pravé jméno (název článku) a tajný popis odhalí až identifikace od DM.</p>
-          <label class="vischeck" style="margin-bottom:8px"><input type="checkbox" id="iIdentDef" ${it.identifiedDefault ? 'checked' : ''}> nové kusy jsou rovnou identifikované</label>
+          <div class="pick-group" style="margin-bottom:8px">${pill('id="iIdentDef"', 'nové kusy jsou rovnou identifikované', !!it.identifiedDefault)}</div>
           <label style="margin-top:4px">Obecný název (neidentifikováno)</label>
           <input id="iUnident" placeholder="např. Tajemný meč" value="${esc(it.unidentifiedName || '')}">
           <label>Veřejný popis (vidí každý držitel)</label>
@@ -3127,7 +3132,7 @@ async function renderEditor(aid) {
 
         <div class="formsec">
           <h4>🎒 Kontejner</h4>
-          <label class="vischeck"><input type="checkbox" id="iIsCont" ${it.container ? 'checked' : ''}> tento předmět je kontejner (batoh, brašna, opasek s kapsami…)</label>
+          <div class="pick-group">${pill('id="iIsCont"', 'tento předmět je kontejner (batoh, brašna, opasek s kapsami…)', !!it.container)}</div>
           <div id="iContWrap" style="${it.container ? '' : 'display:none'}; margin-top:8px">
             <p class="muted" style="margin:0 0 6px">Klikáním nakreslete tvar. Každé kliknutí přepne políčko: prázdné → 🟢 volná akce → 🟡 akce → 🔴 celé kolo → prázdné. Poloha na plátně nehraje roli — tvar se sám přisune k okraji.</p>
             <div id="iContGrid" class="contgrid-edit"></div>
@@ -3315,6 +3320,15 @@ async function renderEditor(aid) {
       drawGrid();
       const isCont = $app.querySelector('#iIsCont');
       if (isCont) isCont.onchange = () => { $app.querySelector('#iContWrap').style.display = isCont.checked ? '' : 'none'; };
+      // „Kamkoli“ a výběr konkrétních slotů se vylučují
+      const anyEl = $app.querySelector('#iAnywhere');
+      const syncPill = el => { const l = el.closest('.pick-toggle'); if (l) l.classList.toggle('on', el.checked); };
+      if (anyEl) anyEl.addEventListener('change', () => {
+        if (anyEl.checked) $app.querySelectorAll('.iSlot:checked').forEach(x => { x.checked = false; syncPill(x); });
+      });
+      $app.querySelectorAll('.iSlot').forEach(x => x.addEventListener('change', () => {
+        if (x.checked && anyEl && anyEl.checked) { anyEl.checked = false; syncPill(anyEl); }
+      }));
       // sběr všech polí předmětu do a.item (volá se před uložením)
       a._collectItem = () => {
         const g = id => $app.querySelector('#' + id);
@@ -3328,12 +3342,14 @@ async function renderEditor(aid) {
           weight: parseFloat(val('iWeight', 0)) || 0, price: val('iPrice', ''), rarity: val('iRarity', ''),
           w: parseInt(val('iW', 1), 10) || 1, h: parseInt(val('iH', 1), 10) || 1,
           hpMax: parseInt(val('iHpMax', 10), 10) || 10,
-          wearable: chk('iWearable'), twoHanded: chk('iTwoHanded'),
+          // nositelnost plyne z výběru slotů: „Kamkoli“ NEBO aspoň jeden konkrétní slot
+          wearable: chk('iAnywhere') || !![...$app.querySelectorAll('.iSlot:checked')].length,
+          twoHanded: chk('iTwoHanded'),
           stackable: chk('iStackable'), stackMax: parseInt(val('iStackMax', 10), 10) || 10,
           noDrop: chk('iNoDrop'), identifiedDefault: chk('iIdentDef'),
           unidentifiedName: val('iUnident', ''), publicText: val('iPublic', ''), secretText: val('iSecret', ''),
           bodySize: parseInt(val('iBodySize', 4), 10) || 4,
-          slots: [...$app.querySelectorAll('.iSlot:checked')].map(x => x.value),
+          slots: chk('iAnywhere') ? [] : [...$app.querySelectorAll('.iSlot:checked')].map(x => x.value),
           container: cont && cont.cells.length ? cont : null
         };
       };
@@ -4210,7 +4226,7 @@ function invAttachDrag(el, it) {
         invMarkTargets(it, rot); // zeleně kam to jde, červeně kam ne
       }
       if (!moved) return;
-      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+      ghost.style.left = ev.pageX + 'px'; ghost.style.top = ev.pageY + 'px';
       clearHl();
       const t = invDropTarget(ev, it);
       if (t && t.el) t.el.classList.add('drop-ok');
@@ -4346,45 +4362,46 @@ async function invDrawBody() {
       // šířka i výška rostou s kapacitou — velikost slotu je vidět na první pohled
       slot.className = 'inv-slot2 cap' + Math.max(1, Math.min(4, cap));
       slot.dataset.dropSlot = key; slot.dataset.char = chId;
-      slot.innerHTML = `<span class="sl-name">${esc(label)}${custom && dm ? `<a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
+      slot.innerHTML = `<span class="sl-name" title="${esc(label)} — kapacita ${cap}">${esc(label)} <span class="sl-cap">(${cap})</span>${custom && dm ? `<a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
       const it = data.items.find(i => i.loc && i.loc.t === 'slot' && i.loc.charId === chId && i.loc.slot === key);
       if (it) { const tok = invTokenEl(it, 52, true); tok.classList.add('fit'); slot.querySelector('.sl-body').appendChild(tok); slot.classList.add('filled'); }
       return slot;
     };
+    const custom = data.customSlots || [];
+    // vlastní skupiny (oblasti): vestavěné + ty, které si DM vytvořil názvem u slotu
+    const customGroups = [...new Set(custom.map(s => s.group || 'Další sloty'))]
+      .filter(g => !INV_GROUPS.some(x => x.label === g));
+    const mkRow = (label, keysHtmlFn) => {
+      const row = document.createElement('div');
+      row.className = 'inv-group';
+      row.innerHTML = `<div class="inv-group-label">${esc(label)}</div>`;
+      const rowSlots = document.createElement('div');
+      rowSlots.className = 'inv-group-slots';
+      keysHtmlFn(rowSlots);
+      row.appendChild(rowSlots);
+      doll.appendChild(row);
+      return rowSlots;
+    };
     for (const grp of INV_GROUPS) {
-      const row = document.createElement('div');
-      row.className = 'inv-group';
-      row.innerHTML = `<div class="inv-group-label">${grp.label}</div>`;
-      const rowSlots = document.createElement('div');
-      rowSlots.className = 'inv-group-slots';
-      for (const key of grp.slots) rowSlots.appendChild(mkSlot(key, INV_SLOT_DEFS[key].l, data.slots[key] || 1, false));
-      row.appendChild(rowSlots);
-      doll.appendChild(row);
+      mkRow(grp.label, rowSlots => {
+        for (const key of grp.slots) rowSlots.appendChild(mkSlot(key, INV_SLOT_DEFS[key].l, data.slots[key] || 1, false));
+        for (const s of custom.filter(c => (c.group || 'Další sloty') === grp.label))
+          rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
+      });
     }
-    // vlastní sloty kampaně (Oči, Pouzdro na zádech…) + tlačítko pro DM
-    if ((data.customSlots || []).length || dm) {
-      const row = document.createElement('div');
-      row.className = 'inv-group';
-      row.innerHTML = `<div class="inv-group-label">Další sloty</div>`;
-      const rowSlots = document.createElement('div');
-      rowSlots.className = 'inv-group-slots';
-      for (const s of data.customSlots || []) rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
-      if (dm) {
-        const add = document.createElement('button');
-        add.className = 'inv-slot-add';
-        add.textContent = '＋ slot';
-        add.title = 'Nový slot postavy (platí pro všechny postavy v kampani)';
-        add.onclick = async () => {
-          const label = prompt('Název slotu (např. Oči):');
-          if (!label || !label.trim()) return;
-          const cap = Math.max(1, Math.min(4, parseInt(prompt('Kapacita v políčkách (1–4):', '1'), 10) || 1));
-          try { await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body: { label, cap } }); invDrawBody(); }
-          catch (e) { invToast(e.message); }
-        };
-        rowSlots.appendChild(add);
-      }
-      row.appendChild(rowSlots);
-      doll.appendChild(row);
+    for (const g of customGroups) {
+      mkRow(g, rowSlots => {
+        for (const s of custom.filter(c => (c.group || 'Další sloty') === g))
+          rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
+      });
+    }
+    if (dm) { // ＋ slot: dialog s názvem, velikostí a umístěním (včetně nové oblasti)
+      const add = document.createElement('button');
+      add.className = 'inv-slot-add';
+      add.textContent = '＋ slot';
+      add.title = 'Nový slot postavy (platí pro všechny postavy v kampani)';
+      add.onclick = () => invNewSlotDialog([...INV_GROUPS.map(g => g.label), ...customGroups]);
+      doll.appendChild(add);
     }
     // obouruční zbraň v ruce → druhá ruka zašedne
     const hands = ['handR', 'handL'];
@@ -4583,6 +4600,45 @@ async function invDetailReload(instId) {
     if (invUI.items.some(i => i.id === instId) || (invUI.zoneItems || []).some(i => i.id === instId)) invDetail(instId);
   }, 200);
 }
+/** Dialog pro nový slot postavy: název, velikost, umístění (existující nebo nová oblast). */
+function invNewSlotDialog(groups) {
+  const overlay = h(`<div class="modal-overlay"><div class="modal">
+    <h3 style="margin:0 0 10px">＋ Nový slot postavy</h3>
+    <p class="muted" style="margin-top:0">Slot se objeví u <b>všech postav v kampani</b>.</p>
+    <label>Název slotu</label>
+    <input data-k="name" placeholder="např. Oči">
+    <label>Velikost (kapacita v políčkách)</label>
+    <select data-k="cap" style="width:auto">${[1, 2, 3, 4].map(n => `<option value="${n}">${n}</option>`).join('')}</select>
+    <label>Umístění (oblast)</label>
+    <select data-k="group" style="width:auto">
+      ${groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('')}
+      <option value="__new">＋ nová oblast…</option>
+    </select>
+    <input data-k="newgroup" placeholder="Název nové oblasti (např. Doplňky)" style="display:none; margin-top:6px">
+    <div style="margin-top:14px; display:flex; gap:8px">
+      <button data-k="save">Vytvořit slot</button>
+      <button class="ghost" data-k="cancel">Zrušit</button>
+    </div>
+    <div class="error" data-k="err"></div>
+  </div></div>`).firstElementChild;
+  document.body.appendChild(overlay);
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  const q = k => overlay.querySelector(`[data-k=${k}]`);
+  q('cancel').onclick = () => overlay.remove();
+  q('group').onchange = () => { q('newgroup').style.display = q('group').value === '__new' ? '' : 'none'; };
+  q('save').onclick = async () => {
+    const label = q('name').value.trim();
+    if (!label) { q('err').textContent = 'Zadejte název slotu.'; return; }
+    const group = q('group').value === '__new' ? q('newgroup').value.trim() : q('group').value;
+    if (!group) { q('err').textContent = 'Zadejte název oblasti.'; return; }
+    try {
+      await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body: { label, cap: parseInt(q('cap').value, 10), group } });
+      overlay.remove(); invDrawBody();
+    } catch (e) { q('err').textContent = e.message; }
+  };
+  setTimeout(() => q('name').focus(), 30);
+}
+
 /** Překreslí tělo i otevřený panel zóny. */
 function invRefresh() { invDrawBody(); if (invUI.zoneOpen) invZonePane(); }
 /** SSE zpráva o změně inventáře → překreslit, pokud je stránka otevřená. */

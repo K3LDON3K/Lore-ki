@@ -2024,9 +2024,10 @@ route('POST', '/api/campaigns/:cid/inv/slots', async (req, res, params, userId, 
   const label = String(body.label || '').trim().slice(0, 30);
   if (!label) return sendJSON(res, 400, { error: 'Zadejte název slotu.' });
   const cap = Math.max(1, Math.min(4, parseInt(body.cap, 10) || 1));
+  const group = String(body.group || 'Další sloty').trim().slice(0, 30) || 'Další sloty';
   camp.customSlots = camp.customSlots || [];
   const key = 'cs' + nextId(); // klíč nekoliduje s vestavěnými
-  camp.customSlots.push({ key, label, cap });
+  camp.customSlots.push({ key, label, cap, group });
   save(); sseBroadcast(cid, { inv: 1 });
   sendJSON(res, 200, { key });
 });
