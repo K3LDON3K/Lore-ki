@@ -1182,8 +1182,23 @@ a.att:hover { border-color: var(--accent); }
 .article-body blockquote, .rich blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 4px 12px; color: var(--muted); font-style: italic; }
 
 /* kreslicí plátno */
-.sketch-modal { max-width: 560px; }
-.sketch-canvas { width: 100%; aspect-ratio: 1/1; border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; display: block; }
-.sketch-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-.sketch-tools2 { display: flex; gap: 6px; flex-wrap: wrap; }
+.sketch-modal { max-width: 400px; }
+.sketch-canvas { width: min(100%, 300px, 44vh); aspect-ratio: 1/1; margin: 0 auto; border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; display: block; }
+.sketch-tools { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.sketch-modal .colorgrid { display: flex; flex-wrap: wrap; gap: 5px; }
+.sketch-modal .colorswatch { width: 22px; height: 22px; border-radius: 6px; padding: 0; }
+.sketch-modal h3 { font-size: 16px; }
+.sketch-tools2 { display: flex; gap: 5px; flex-wrap: wrap; }
+.sketch-tools2 button { padding: 3px 9px; font-size: 12px; }
 .sketch-tools2 button.on, .sketch-tools .colorswatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- jednotná lišta bloku: kdo vidí + prozrazení ---- */
+.seg-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 2px 0 12px; padding-top: 4px;
+  border-top: 1px dashed var(--border);
+  font-size: 11.5px;
+}
+.seg-bar .vis-badge { position: static; display: inline-block; margin: 0; }
+.seg-bar button { font-size: 11.5px; opacity: .8; }
+.seg-bar button:hover { opacity: 1; }

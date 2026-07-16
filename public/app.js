@@ -791,7 +791,7 @@ async function refPaneRender() {
       </div>
       ${a.description ? `<p class="muted">${esc(a.description)}</p>` : ''}
       ${a.coverImageId ? `<img class="refpane-cover" src="${imgUrl(a.coverImageId)}" alt="">` : ''}
-      ${a.blocks.length ? a.blocks.map(b => renderBlockHTML(b, a.owned) + revealBtnHTML(b)).join('') : '<p class="muted">Článek zatím nemá žádný obsah.</p>'}
+      ${a.blocks.length ? a.blocks.map(b => renderBlockHTML(b, a.owned) + blockBarHTML(b, a.owned)).join('') : '<p class="muted">Článek zatím nemá žádný obsah.</p>'}
     </div>`;
   el.querySelector('[data-k=close]').onclick = closeRefPane;
   el.querySelector('[data-k=goto]').onclick = () => { location.hash = `#/c/${state.campaign.id}/a/${id}`; };
@@ -1522,7 +1522,7 @@ function wireRich(f, c) {
   const sk = f.querySelector('[data-sketch]');
   if (sk) sk.onclick = e => {
     e.preventDefault(); saveSel();
-    openSketchpad(imgId => insHTML(`<img src="/api/images/${imgId}" style="width:50%"> `));
+    openSketchpad(imgId => insHTML(`<img src="/api/images/${imgId}" style="width:35%"> `));
   };
 
   attachCtxMenu(editor, () => [
@@ -1533,7 +1533,7 @@ function wireRich(f, c) {
     { icon: '▓', label: 'Označit jako spoiler', action: insertSpoiler },
     { icon: '🌐', label: 'Označit jako cizí jazyk…', action: insertLang },
     { icon: '🖼', label: 'Vložit obrázek…', action: insertImage },
-    { icon: '✏️', label: 'Nakreslit kresbu…', action: () => openSketchpad(imgId => { editor.focus(); restoreSel(); document.execCommand('insertHTML', false, `<img src="/api/images/${imgId}" style="width:50%"> `); sync(); }) },
+    { icon: '✏️', label: 'Nakreslit kresbu…', action: () => openSketchpad(imgId => { editor.focus(); restoreSel(); document.execCommand('insertHTML', false, `<img src="/api/images/${imgId}" style="width:35%"> `); sync(); }) },
     { icon: '🔗', label: 'Vložit referenci na článek…', action: insertRef },
     { icon: '⌫', label: 'Vymazat formátování', action: () => exec('removeFormat') },
   ]);
@@ -2333,31 +2333,30 @@ function visBadge(b, owned = false) {
 
 function renderBlockHTML(b, owned = false) {
   const c = b.content || {};
-  const badge = visBadge(b, owned);
   switch (b.type) {
     case 'heading': {
       const lvl = Math.min(3, Math.max(1, c.level || 2)) + 1;
-      return `<h${lvl}>${esc(c.text)}${badge}</h${lvl}>`;
+      return `<h${lvl}>${esc(c.text)}</h${lvl}>`;
     }
-    case 'paragraph': return `<p>${richHTML(c, owned)}${badge}</p>`;
+    case 'paragraph': return `<p>${richHTML(c, owned)}</p>`;
     case 'list': {
       const tag = c.ordered ? 'ol' : 'ul';
-      return `<${tag}>${(c.items || []).map(i => `<li>${refsToLinks(esc(i))}</li>`).join('')}</${tag}>${badge}`;
+      return `<${tag}>${(c.items || []).map(i => `<li>${refsToLinks(esc(i))}</li>`).join('')}</${tag}>`;
     }
-    case 'quote': return `<div class="block-quote">${richHTML(c, owned)}${badge}</div>`;
-    case 'alert': return `<div class="block-alert">⚠️ ${richHTML(c, owned)}${badge}</div>`;
-    case 'divider': return `<hr class="block-divider" style="margin:8px 0">${badge}`;
+    case 'quote': return `<div class="block-quote">${richHTML(c, owned)}</div>`;
+    case 'alert': return `<div class="block-alert">⚠️ ${richHTML(c, owned)}</div>`;
+    case 'divider': return `<hr class="block-divider" style="margin:8px 0">`;
     case 'image': {
       const w = [25, 50, 75, 100].includes(c.width) ? c.width : 100;
-      return `<div class="block-image" style="margin:4px 0">${c.imageId ? `<img src="${imgUrl(c.imageId)}" style="width:${w}%" alt="">` : ''}${c.caption ? `<div class="caption">${esc(c.caption)}</div>` : ''}${badge}</div>`;
+      return `<div class="block-image" style="margin:4px 0">${c.imageId ? `<img src="${imgUrl(c.imageId)}" style="width:${w}%" alt="">` : ''}${c.caption ? `<div class="caption">${esc(c.caption)}</div>` : ''}</div>`;
     }
-    case 'link': return `<p>🔗 <a class="ref" href="#/c/${state.campaign.id}/a/${c.articleId}">${esc(c.title || c.label || 'Odkaz')}</a>${badge}</p>`;
+    case 'link': return `<p>🔗 <a class="ref" href="#/c/${state.campaign.id}/a/${c.articleId}">${esc(c.title || c.label || 'Odkaz')}</a></p>`;
     case 'audio': return `<div class="block-image" style="margin:8px 0">
       ${c.caption || c.name ? `<div class="caption" style="margin-bottom:4px">🎵 ${esc(c.caption || c.name)}</div>` : ''}
-      ${c.imageId ? `<audio controls preload="none" src="${imgUrl(c.imageId)}" style="width:100%; max-width:480px"></audio>` : ''}${badge}</div>`;
+      ${c.imageId ? `<audio controls preload="none" src="${imgUrl(c.imageId)}" style="width:100%; max-width:480px"></audio>` : ''}</div>`;
     case 'video': return `<div class="block-image" style="margin:8px 0">
       ${c.caption || c.name ? `<div class="caption" style="margin-bottom:4px">🎬 ${esc(c.caption || c.name)}</div>` : ''}
-      ${c.imageId ? `<video controls preload="metadata" src="${imgUrl(c.imageId)}" style="width:100%; max-width:640px; border-radius:12px; box-shadow:var(--shadow)"></video>` : ''}${badge}</div>`;
+      ${c.imageId ? `<video controls preload="metadata" src="${imgUrl(c.imageId)}" style="width:100%; max-width:640px; border-radius:12px; box-shadow:var(--shadow)"></video>` : ''}</div>`;
     case 'youtube': {
       const id = ytId(c.url);
       const w = [25, 50, 75, 100].includes(c.width) ? c.width : 100;
@@ -2366,10 +2365,10 @@ function renderBlockHTML(b, owned = false) {
         ${id ? `<div style="position:relative; padding-top:56.25%; border-radius:12px; overflow:hidden; box-shadow:var(--shadow)">
           <iframe src="https://www.youtube.com/embed/${id}" style="position:absolute; inset:0; width:100%; height:100%; border:0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-        </div>` : `<span class="muted">Neplatný odkaz na YouTube.</span>`}${badge}</div>`;
+        </div>` : `<span class="muted">Neplatný odkaz na YouTube.</span>`}</div>`;
     }
     case 'file': return `<p>📎 <a href="javascript:void 0" class="attach" data-attach-id="${c.imageId}"
-      data-attach-name="${esc(c.name || 'příloha')}" data-attach-mime="${esc(c.mime || '')}">${esc(c.caption || c.name || 'Příloha')}</a>${badge}</p>`;
+      data-attach-name="${esc(c.name || 'příloha')}" data-attach-mime="${esc(c.mime || '')}">${esc(c.caption || c.name || 'Příloha')}</a></p>`;
     case 'statblock': {
       const mod = v => { const m = Math.floor(((parseInt(v, 10) || 10) - 10) / 2); return (m >= 0 ? '+' : '') + m; };
       const paras = t => String(t || '').split('\n').filter(x => x.trim())
@@ -2414,19 +2413,31 @@ function renderBlockHTML(b, owned = false) {
           ${section('Bonus Actions', c.bonusActions, 'bonusActions')}
           ${section('Legendary Actions', c.legendaryActions, 'legendaryActions')}
         </div>
-      </div>${badge}`;
+      </div>`;
     }
     case 'dm_note': return `<div class="block-dmnote">${richHTML(c, owned)}</div>`;
-    default: return `<p>${richHTML(c, owned)}${badge}</p>`;
+    default: return `<p>${richHTML(c, owned)}</p>`;
   }
 }
 
-/** Tlačítko „prozradit informaci“ — jen pro hráče u bloků, které jeho postava vidí jmenovitě. */
-function revealBtnHTML(b) {
-  if (!b.canReveal || canEdit()) return '';
-  const pend = (b.pendingReveals || []).length
-    ? `<span class="reveal-pending" title="Žádost o prozrazení čeká na schválení DM">⏳ žádost o prozrazení podána: ${b.pendingReveals.map(esc).join(', ')}</span>` : '';
-  return `<div class="reveal-row"><button class="small ghost" data-reveal="${b.id}" title="Vaše postava tuto informaci zná jmenovitě — může ji prozradit jiné postavě (schvaluje DM)">🤫 Prozradit jiné postavě…</button>${pend}</div>`;
+/** Jednotná lišta pod blokem: komu je obsah přístupný + prozrazení jiné postavě.
+    DM a vlastník vidí viditelnost vždy; hráč jen u bloků, které zná jmenovitě. */
+function blockBarHTML(b, owned = false) {
+  const parts = [];
+  if (canEdit() || owned) {
+    if (b.type === 'dm_note' || b.visibility === 'dm') parts.push(`<span class="vis-badge vis-dm">🔒 Pouze DM</span>`);
+    else if (b.visibility === 'custom') {
+      const names = (b.visibleTo || []).map(id => esc(charName(id))).join(', ');
+      parts.push(`<span class="vis-badge vis-custom">🎭 ${names || (owned ? 'jen vy + DM' : '—')}</span>`);
+    } else parts.push(`<span class="vis-badge vis-all">👁 Všichni hráči</span>`);
+  } else if (b.canReveal) {
+    parts.push(`<span class="vis-badge vis-custom" title="Blok je určený jen vybraným postavám — vaše mezi ně patří">🔐 Jen vybrané postavy</span>`);
+  }
+  if (b.canReveal && !canEdit())
+    parts.push(`<button class="small ghost" data-reveal="${b.id}" title="Vaše postava tuto informaci zná — může ji prozradit jiné postavě (schvaluje DM)">🤫 Prozradit jiné postavě…</button>`);
+  if ((b.pendingReveals || []).length && !canEdit())
+    parts.push(`<span class="reveal-pending" title="Žádost o prozrazení čeká na schválení DM">⏳ podáno: ${b.pendingReveals.map(esc).join(', ')}</span>`);
+  return parts.length ? `<div class="seg-bar">${parts.join('')}</div>` : '';
 }
 /** Výběr cílové postavy a odeslání žádosti. */
 async function revealDialog(blockId) {
@@ -2545,7 +2556,7 @@ async function renderArticle(aid) {
         </div>`;
       })()}
       <div id="segments">
-        ${a.blocks.map((b, i) => addZone(i) + `<div class="seg" data-seg="${i}">${renderBlockHTML(b, ownerMode)}${revealBtnHTML(b)}${segTools(i)}</div>`).join('')}
+        ${a.blocks.map((b, i) => addZone(i) + `<div class="seg" data-seg="${i}">${renderBlockHTML(b, ownerMode)}${blockBarHTML(b, ownerMode)}${segTools(i)}</div>`).join('')}
         ${addZone(a.blocks.length)}
         ${editable && a.blocks.length === 0 ? '<p class="muted">Článek zatím nemá žádný obsah — přidejte první blok tlačítkem +.</p>' : ''}
       </div>
@@ -2652,7 +2663,11 @@ async function renderArticle(aid) {
   /** Otevře inline editor bloku na pozici i (isNew = nový blok, zrušení ho odstraní). */
   function openInline(i, isNew = false) {
     const b = editBlocks[i];
-    const seg = $app.querySelector(`[data-seg="${i}"]`) || $app.querySelector(`[data-seg-add="${i}"]`);
+    // nový blok se kotví k (+) zóně, na kterou se kliklo — editor se objeví přesně tam,
+    // kam se blok po uložení vloží (zóna i leží NAD blokem i)
+    const seg = isNew
+      ? ($app.querySelector(`[data-seg-add="${i}"]`) || $app.querySelector(`[data-seg="${i}"]`))
+      : ($app.querySelector(`[data-seg="${i}"]`) || $app.querySelector(`[data-seg-add="${i}"]`));
     const box = h(`<div class="editor-block inline-editor">
       <div class="row" style="display:flex; align-items:center; gap:8px">
         <span class="blocktype">${blockTypeLabel(b.type)}</span>
@@ -2932,7 +2947,7 @@ async function renderSession(sid, editMine = false) {
     reportBody.innerHTML = '';
     reportBlocks.forEach((b, i) => {
       reportBody.appendChild(reportAddZone(i));
-      const seg = h(`<div class="seg">${renderBlockHTML(b, false)}<div class="seg-tools">
+      const seg = h(`<div class="seg">${renderBlockHTML(b, false)}${blockBarHTML(b)}<div class="seg-tools">
         <button data-k="edit" title="Upravit bloky">✏️</button></div></div>`).firstElementChild;
       seg.querySelector('[data-k=edit]').onclick = () => drawReportEditor();
       seg.ondblclick = e => { if (!e.target.closest('a')) drawReportEditor(); };
@@ -5217,7 +5232,7 @@ async function invDetail(instId) {
       if (!a.blocks.length && !a.description) return;
       artBox.innerHTML = `<hr class="block-divider">
         ${a.description ? `<p class="muted">${esc(a.description)}</p>` : ''}
-        ${a.blocks.map(b => renderBlockHTML(b, a.owned)).join('')}`;
+        ${a.blocks.map(b => renderBlockHTML(b, a.owned) + blockBarHTML(b, a.owned)).join('')}`;
     }).catch(() => { });
   }
   // zavření detailu se vrací do panelu zóny (pokud byl otevřený)
