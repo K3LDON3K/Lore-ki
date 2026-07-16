@@ -1144,3 +1144,12 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .slotset-row input { flex: 0 1 260px; margin: 0; }
 .slotset-row select { width: auto; margin: 0; }
 .slotset-base { flex: none; width: 130px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+
+/* ---- prozrazování informací ---- */
+.reveal-row { margin: -6px 0 12px; }
+.reveal-row button { font-size: 11.5px; opacity: .75; }
+.reveal-row button:hover { opacity: 1; }
+.reveal-req { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; }
+.reveal-req-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.reveal-req-quote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--accent); background: var(--panel2); border-radius: 0 8px 8px 0; font-size: 13px; }
+.reveal-req-actions { display: flex; gap: 8px; }

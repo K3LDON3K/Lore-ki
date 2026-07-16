@@ -334,6 +334,7 @@ const SETTINGS_TABS = [
   { key: 'general', icon: '⚙️', label: 'Obecné', path: 'settings' },
   { key: 'nav', icon: '🧭', label: 'Navigace', path: 'settings/nav' },
   { key: 'inv', icon: '🎒', label: 'Inventář', path: 'settings/inv' },
+  { key: 'articles', icon: '📄', label: 'Články', path: 'settings/articles' },
   { key: 'players', icon: '👥', label: 'Hráči a postavy', path: 'players' },
   { key: 'categories', icon: '🏷️', label: 'Kategorie', path: 'categories' },
 ];
@@ -790,7 +791,7 @@ async function refPaneRender() {
       </div>
       ${a.description ? `<p class="muted">${esc(a.description)}</p>` : ''}
       ${a.coverImageId ? `<img class="refpane-cover" src="${imgUrl(a.coverImageId)}" alt="">` : ''}
-      ${a.blocks.length ? a.blocks.map(b => renderBlockHTML(b, a.owned)).join('') : '<p class="muted">Článek zatím nemá žádný obsah.</p>'}
+      ${a.blocks.length ? a.blocks.map(b => renderBlockHTML(b, a.owned) + revealBtnHTML(b)).join('') : '<p class="muted">Článek zatím nemá žádný obsah.</p>'}
     </div>`;
   el.querySelector('[data-k=close]').onclick = closeRefPane;
   el.querySelector('[data-k=goto]').onclick = () => { location.hash = `#/c/${state.campaign.id}/a/${id}`; };
@@ -1928,6 +1929,7 @@ async function renderCampaignSettings(tab = 'general') {
   if (!canEdit()) { location.hash = `#/c/${state.campaign.id}`; return; }
   if (tab === 'nav') return renderNavSettings();
   if (tab === 'inv') return renderInvSettings();
+  if (tab === 'articles') return renderArticleSettings();
   const c = state.campaign;
   shell(`
     ${settingsHead('general')}
@@ -1967,6 +1969,55 @@ async function renderCampaignSettings(tab = 'general') {
       location.hash = `#/c/${c.id}`;
     } catch (e) { $app.querySelector('#csErr').textContent = e.message; }
   };
+}
+
+// ---------------------------------------------------------------- nastavení → články: prozrazování informací (DM)
+async function renderArticleSettings() {
+  const c = state.campaign;
+  let data;
+  try { data = await api(`/api/campaigns/${c.id}/reveals`); }
+  catch (e) { shell(`${settingsHead('articles')}<p class="error">${esc(e.message)}</p>`, { active: 'settings' }); return; }
+  shell(`
+    ${settingsHead('articles')}
+    <div class="card">
+      <h3 style="margin-top:0">Prozrazování informací</h3>
+      <p class="muted">Postava, která vidí blok určený jen vybraným postavám, ho může <b>prozradit</b> jiné postavě. Informace se zpřístupní až po schválení — nebo hned, když zapnete automatiku.</p>
+      <label class="pick-toggle ${data.auto ? 'on' : ''}" style="width:fit-content"><input type="checkbox" id="csAutoReveal" ${data.auto ? 'checked' : ''}>✅ Automatické schvalování prozrazování informací</label>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Žádosti ke schválení ${data.requests.length ? `<span class="badge pending">${data.requests.length}</span>` : ''}</h3>
+      ${data.requests.length ? data.requests.map(r => `
+        <div class="reveal-req" data-req="${r.id}">
+          <div class="reveal-req-head">
+            <b>🎭 ${esc(r.fromChar)}</b> chce prozradit postavě <b>🎭 ${esc(r.toChar)}</b>
+            <a href="#/c/${c.id}/a/${r.articleId}">📄 ${esc(r.articleTitle)}</a>
+            <span class="muted">${fmtDate(r.ts)}</span>
+          </div>
+          ${r.excerpt ? `<blockquote class="reveal-req-quote">${esc(r.excerpt)}${r.excerpt.length >= 200 ? '…' : ''}</blockquote>` : '<p class="muted">(blok bez textu — obrázek či příloha)</p>'}
+          <div class="reveal-req-actions">
+            <button class="small" data-approve-rev="${r.id}">✓ Schválit</button>
+            <button class="small danger" data-reject-rev="${r.id}">✕ Zamítnout</button>
+          </div>
+        </div>`).join('')
+      : '<p class="muted">Žádné žádosti nečekají.</p>'}
+    </div>`,
+    { active: 'settings', crumbs: [{ label: settingsTabLabel('articles') }] });
+
+  const auto = $app.querySelector('#csAutoReveal');
+  auto.onchange = async () => {
+    const l = auto.closest('.pick-toggle'); if (l) l.classList.toggle('on', auto.checked);
+    try { await api(`/api/campaigns/${c.id}/settings`, { method: 'PUT', body: { autoReveal: auto.checked } }); }
+    catch (e) { invToast(e.message); auto.checked = !auto.checked; if (l) l.classList.toggle('on', auto.checked); }
+  };
+  const act = async (id, action) => {
+    try { await api(`/api/reveals/${id}`, { method: 'PUT', body: { action } }); renderArticleSettings(); }
+    catch (e) { invToast(e.message); renderArticleSettings(); }
+  };
+  $app.querySelectorAll('[data-approve-rev]').forEach(b => b.onclick = () => act(+b.dataset.approveRev, 'approve'));
+  $app.querySelectorAll('[data-reject-rev]').forEach(b => b.onclick = async () => {
+    if (!await confirmDialog('Zamítnout žádost? Hráč se to nedozví, jen se informace nezpřístupní.', { title: 'Zamítnout prozrazení', ok: 'Zamítnout', danger: true })) return;
+    act(+b.dataset.rejectRev, 'reject');
+  });
 }
 
 // ---------------------------------------------------------------- nastavení → inventář: sloty postavy (DM)
@@ -2222,6 +2273,40 @@ function renderBlockHTML(b, owned = false) {
   }
 }
 
+/** Tlačítko „prozradit informaci“ — jen pro hráče u bloků, které jeho postava vidí jmenovitě. */
+function revealBtnHTML(b) {
+  if (!b.canReveal || canEdit()) return '';
+  return `<div class="reveal-row"><button class="small ghost" data-reveal="${b.id}" title="Vaše postava tuto informaci zná jmenovitě — může ji prozradit jiné postavě (schvaluje DM)">🤫 Prozradit jiné postavě…</button></div>`;
+}
+/** Výběr cílové postavy a odeslání žádosti. */
+async function revealDialog(blockId) {
+  const others = state.characters.filter(c => c.id !== state.viewChar);
+  if (!others.length) return invToast('V kampani není žádná jiná postava.');
+  const picked = await new Promise(resolve => {
+    closeCtxMenu();
+    const overlay = h(`<div class="modal-overlay"><div class="modal confirm-modal" role="dialog" aria-modal="true">
+      <div class="confirm-head"><span class="confirm-icon">🤫</span><h3>Prozradit informaci</h3></div>
+      <div class="confirm-msg">Komu chce vaše postava tuto informaci prozradit? Pokud DM nemá zapnuté automatické schvalování, informace se zpřístupní až po jeho souhlasu.</div>
+      <div class="zone-pick">${others.map(c => `<button class="secondary" data-ch="${c.id}">🎭 ${esc(c.name)}</button>`).join('')}</div>
+      <div class="confirm-actions"><button class="secondary" data-k="no">Zrušit</button></div>
+    </div></div>`).firstElementChild;
+    document.body.appendChild(overlay);
+    const done = v => { overlay.remove(); resolve(v); };
+    overlay.onclick = e => { if (e.target === overlay) done(null); };
+    overlay.querySelector('[data-k=no]').onclick = () => done(null);
+    overlay.querySelectorAll('[data-ch]').forEach(b => b.onclick = () => done(+b.dataset.ch));
+  });
+  if (!picked) return;
+  try {
+    const r = await api(`/api/blocks/${blockId}/reveal`, { method: 'POST', body: { toCharId: picked } });
+    invToast(r.approved ? 'Informace prozrazena — postava ji teď vidí.' : 'Odesláno DM ke schválení.');
+  } catch (e) { invToast(e.message); }
+}
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-reveal]');
+  if (btn && state.campaign) revealDialog(+btn.dataset.reveal);
+});
+
 async function renderArticle(aid) {
   let a, notes;
   try {
@@ -2294,7 +2379,7 @@ async function renderArticle(aid) {
         </div>`;
       })()}
       <div id="segments">
-        ${a.blocks.map((b, i) => addZone(i) + `<div class="seg" data-seg="${i}">${renderBlockHTML(b, ownerMode)}${segTools(i)}</div>`).join('')}
+        ${a.blocks.map((b, i) => addZone(i) + `<div class="seg" data-seg="${i}">${renderBlockHTML(b, ownerMode)}${revealBtnHTML(b)}${segTools(i)}</div>`).join('')}
         ${addZone(a.blocks.length)}
         ${editable && a.blocks.length === 0 ? '<p class="muted">Článek zatím nemá žádný obsah — přidejte první blok tlačítkem +.</p>' : ''}
       </div>

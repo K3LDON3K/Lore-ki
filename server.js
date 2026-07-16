@@ -98,6 +98,7 @@ if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 db.settings = db.settings || { appName: APP_NAME_DEFAULT }; // nastavení aplikace
 db.notes = db.notes || []; // migrace starších dat
 db.itemInstances = db.itemInstances || []; // grafický inventář: konkrétní kusy
+db.reveals = db.reveals || []; // žádosti „prozradit informaci“: {id, campaignId, articleId, blockId, fromCharId, toCharId, ts}
 // jednorázový úklid (slotsV2): vlastní sloty se ruší, zůstává jen systémová šestice.
 // Předměty z rušených slotů se odloží do zóny, ať se neztratí.
 db.campaigns.forEach(c => {
@@ -439,11 +440,15 @@ function visibleBlocksForViewer(articleId, viewer) {
     return blocks.map(b => ({ id: b.id, type: b.type, content: b.content, visibility: b.visibility, visibleTo: b.visibleTo || [] }));
   }
   const owned = isArticleOwner(articleId, viewer.userId);
+  // „prozradit informaci“: hráč smí nabídnout dál blok, který jeho AKTIVNÍ postava vidí jmenovitě
+  const art = db.articles.find(a => a.id === articleId);
+  const activeChar = art ? userCharIds(art.campaignId, viewer.userId)[0] : null;
+  const canReveal = b => !!(activeChar && b.visibility === 'custom' && (b.visibleTo || []).includes(activeChar));
   return blocks
     .filter(b => blockAllowedForPlayer(b, viewer.userId))
     .map(b => owned
-      ? { id: b.id, type: b.type, content: b.content, visibility: b.visibility, visibleTo: b.visibleTo || [] } // vlastník metadata potřebuje k editaci
-      : { id: b.id, type: b.type, content: b.content }); // ostatním hráčům se metadata neposílají
+      ? { id: b.id, type: b.type, content: b.content, visibility: b.visibility, visibleTo: b.visibleTo || [], canReveal: canReveal(b) } // vlastník metadata potřebuje k editaci
+      : { id: b.id, type: b.type, content: b.content, canReveal: canReveal(b) }); // ostatním hráčům se metadata neposílají
 }
 
 function blockText(b) {
@@ -788,7 +793,7 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   const backup = {
     format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(),
-    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [], slotCols: camp.slotCols || {}, slotOrder: camp.slotOrder || [], slotNames: camp.slotNames || {} },
+    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [], slotCols: camp.slotCols || {}, slotOrder: camp.slotOrder || [], slotNames: camp.slotNames || {}, autoReveal: !!camp.autoReveal },
     users: [...new Set(db.memberships.filter(m => m.campaignId === cid).map(m => m.userId))]
       .map(uid => { const u = db.users.find(u => u.id === uid); return u ? { id: u.id, username: u.username } : null; }).filter(Boolean),
     memberships: db.memberships.filter(m => m.campaignId === cid),
@@ -830,7 +835,7 @@ route('POST', '/api/admin/import', async (req, res) => {
   (backup.users || []).forEach(bu => { const u = db.users.find(x => x.username.toLowerCase() === String(bu.username).toLowerCase()); if (u) userMap.set(bu.id, u.id); });
   const mu = old => userMap.has(old) ? userMap.get(old) : null;
 
-  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [], slotCols: (backup.campaign && backup.campaign.slotCols) || {}, slotOrder: (backup.campaign && backup.campaign.slotOrder) || [], slotNames: (backup.campaign && backup.campaign.slotNames) || {}, slotsV2: true };
+  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [], slotCols: (backup.campaign && backup.campaign.slotCols) || {}, slotOrder: (backup.campaign && backup.campaign.slotOrder) || [], slotNames: (backup.campaign && backup.campaign.slotNames) || {}, autoReveal: !!(backup.campaign && backup.campaign.autoReveal), slotsV2: true };
   db.campaigns.push(camp);
   for (const s of SYSTEM_CATEGORIES) if (!camp.categories.includes(s)) camp.categories.push(s);
 
@@ -913,6 +918,7 @@ route('DELETE', '/api/admin/campaigns/:cid', async (req, res, params) => {
   db.articles = db.articles.filter(a => a.campaignId !== cid);
   db.itemInstances = db.itemInstances.filter(i => i.campaignId !== cid);
   db.invZones = db.invZones.filter(z => z.campaignId !== cid);
+  db.reveals = db.reveals.filter(r => r.campaignId !== cid);
   db.invLog = db.invLog.filter(l => l.campaignId !== cid);
   db.characters = db.characters.filter(c => c.campaignId !== cid);
   db.sessions = db.sessions.filter(s => s.campaignId !== cid);
@@ -1060,6 +1066,7 @@ route('PUT', '/api/campaigns/:cid/settings', async (req, res, params, userId, qu
     if (!Array.isArray(body.navOrder)) return sendJSON(res, 400, { error: 'Neplatné pořadí navigace.' });
     c.navOrder = navOrderOf({ navOrder: body.navOrder });
   }
+  if (body.autoReveal !== undefined) c.autoReveal = !!body.autoReveal;
   save();
   sendJSON(res, 200, { ok: true, navOrder: navOrderOf(c) });
 });
@@ -2182,6 +2189,85 @@ route('DELETE', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, u
   // vyčistit klíč i z povolených slotů předmětů
   db.articles.forEach(a => { if (a.campaignId === cid && a.item && Array.isArray(a.item.slots)) a.item.slots = a.item.slots.filter(s => s !== key); });
   save(); sseBroadcast(cid, { inv: 1 });
+  sendJSON(res, 200, { ok: true });
+});
+
+// ================================================================ PROZRADIT INFORMACI
+// Postava, která blok vidí, ho může zpřístupnit jiné postavě. Bez automatiky
+// musí žádost schválit DM — teprve pak se cílová postava přidá do visibleTo.
+/** Úklid „visících“ žádostí (smazaný blok/článek/postava, přepsané bloky článku). */
+function pruneReveals() {
+  const before = db.reveals.length;
+  db.reveals = db.reveals.filter(r =>
+    db.blocks.some(b => b.id === r.blockId && b.articleId === r.articleId && b.visibility === 'custom')
+    && db.characters.some(ch => ch.id === r.fromCharId)
+    && db.characters.some(ch => ch.id === r.toCharId));
+  if (db.reveals.length !== before) save();
+}
+
+route('POST', '/api/blocks/:bid/reveal', async (req, res, params, userId, query) => {
+  const b = db.blocks.find(x => x.id === parseInt(params.bid, 10));
+  const a = b && db.articles.find(x => x.id === b.articleId);
+  if (!b || !a) return sendJSON(res, 404, { error: 'Blok nenalezen.' });
+  const viewer = userId && resolveViewer(userId, a.campaignId, query.viewAs);
+  if (!viewer) return sendJSON(res, 404, { error: 'Blok nenalezen.' });
+  const fromCharId = userCharIds(a.campaignId, viewer.userId)[0];
+  if (!fromCharId) return sendJSON(res, 400, { error: 'Prozrazovat může jen postava.' });
+  // znalost se váže na blok s jmenovitou viditelností, kterou postava skutečně má
+  if (b.visibility !== 'custom' || !(b.visibleTo || []).includes(fromCharId))
+    return sendJSON(res, 404, { error: 'Blok nenalezen.' }); // fail closed — neprozradit, že existuje
+  const body = await readJSONBody(req);
+  const toCharId = parseInt(body.toCharId, 10);
+  const toChar = db.characters.find(ch => ch.id === toCharId && ch.campaignId === a.campaignId);
+  if (!toChar) return sendJSON(res, 400, { error: 'Cílová postava nenalezena.' });
+  if (toCharId === fromCharId) return sendJSON(res, 400, { error: 'Postava tuto informaci už zná.' });
+  if ((b.visibleTo || []).includes(toCharId)) return sendJSON(res, 400, { error: 'Tato postava už informaci vidí.' });
+  if (db.reveals.some(r => r.blockId === b.id && r.toCharId === toCharId))
+    return sendJSON(res, 400, { error: 'Žádost už čeká na schválení DM.' });
+  const camp = db.campaigns.find(c => c.id === a.campaignId);
+  if (camp && camp.autoReveal) {
+    b.visibleTo = [...(b.visibleTo || []), toCharId];
+    save(); sseBroadcast(a.campaignId, { reveals: 1 });
+    return sendJSON(res, 200, { approved: true });
+  }
+  db.reveals.push({ id: nextId(), campaignId: a.campaignId, articleId: a.id, blockId: b.id, fromCharId, toCharId, ts: new Date().toISOString() });
+  save(); sseBroadcast(a.campaignId, { reveals: 1 });
+  sendJSON(res, 200, { pending: true });
+});
+
+route('GET', '/api/campaigns/:cid/reveals', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Žádosti schvaluje DM.' });
+  pruneReveals();
+  const camp = db.campaigns.find(c => c.id === cid);
+  const chName = id => (db.characters.find(ch => ch.id === id) || {}).name || '?';
+  sendJSON(res, 200, {
+    auto: !!(camp && camp.autoReveal),
+    requests: db.reveals.filter(r => r.campaignId === cid).map(r => {
+      const b = db.blocks.find(x => x.id === r.blockId);
+      const a = db.articles.find(x => x.id === r.articleId);
+      return { id: r.id, ts: r.ts, fromChar: chName(r.fromCharId), toChar: chName(r.toCharId),
+        articleId: r.articleId, articleTitle: a ? a.title : '?', excerpt: b ? blockText(b).slice(0, 200) : '' };
+    })
+  });
+});
+
+route('PUT', '/api/reveals/:id', async (req, res, params, userId, query) => {
+  const r = db.reveals.find(x => x.id === parseInt(params.id, 10));
+  if (!r) return sendJSON(res, 404, { error: 'Žádost nenalezena.' });
+  const viewer = userId && resolveViewer(userId, r.campaignId, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Žádosti schvaluje DM.' });
+  const body = await readJSONBody(req);
+  const action = String(body.action || '');
+  if (action !== 'approve' && action !== 'reject') return sendJSON(res, 400, { error: 'Neznámá akce.' });
+  db.reveals = db.reveals.filter(x => x.id !== r.id);
+  if (action === 'approve') {
+    const b = db.blocks.find(x => x.id === r.blockId && x.articleId === r.articleId);
+    if (!b || b.visibility !== 'custom') { save(); return sendJSON(res, 400, { error: 'Blok už neexistuje nebo změnil viditelnost — žádost zrušena.' }); }
+    if (!(b.visibleTo || []).includes(r.toCharId)) b.visibleTo = [...(b.visibleTo || []), r.toCharId];
+  }
+  save(); sseBroadcast(r.campaignId, { reveals: 1 });
   sendJSON(res, 200, { ok: true });
 });
 
