@@ -2328,6 +2328,22 @@ route('GET', '/api/campaigns/:cid/inv/log', async (req, res, params, userId, que
   const rows = db.invLog.filter(l => l.campaignId === cid).slice(-100).reverse();
   sendJSON(res, 200, rows.map(l => ({ ts: l.ts, who: l.who, text: l.text })));
 });
+// úklid deníku přesunů: vše, nebo jen záznamy starší než N dní (?olderThanDays=3)
+route('DELETE', '/api/campaigns/:cid/inv/log', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Deník maže DM.' });
+  const days = parseInt(query.olderThanDays, 10);
+  const before = db.invLog.length;
+  if (days > 0) {
+    const cutoff = Date.now() - days * 86400000;
+    db.invLog = db.invLog.filter(l => l.campaignId !== cid || new Date(l.ts).getTime() >= cutoff);
+  } else {
+    db.invLog = db.invLog.filter(l => l.campaignId !== cid);
+  }
+  save();
+  sendJSON(res, 200, { removed: before - db.invLog.length });
+});
 
 // ================================================================ IMPORT Z D&D BEYOND
 function ddbHtmlToText(html) {

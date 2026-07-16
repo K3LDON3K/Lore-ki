@@ -4989,13 +4989,27 @@ async function renderInventory() {
     catch (e) { invToast(e.message); }
   };
   const logSeg = $app.querySelector('.session-seg');
-  logSeg.addEventListener('toggle', async () => {
-    if (!logSeg.open) return;
+  const loadLog = async () => {
     const rows = await api(`/api/campaigns/${cid}/inv/log`).catch(() => []);
-    $app.querySelector('#invLogBody').innerHTML = rows.length
+    $app.querySelector('#invLogBody').innerHTML = (dm ? `
+      <div style="display:flex; gap:8px; margin-bottom:10px">
+        <button class="small secondary" data-logclean="3">🗑 Smazat starší než 3 dny</button>
+        <button class="small danger" data-logclean="all">🗑 Smazat vše</button>
+      </div>` : '') + (rows.length
       ? rows.map(r => `<div class="invlog-row"><span class="muted">${fmtDate(r.ts)}</span> <b>${esc(r.who)}</b> ${esc(r.text)}</div>`).join('')
-      : '<p class="muted">Zatím žádné záznamy.</p>';
-  });
+      : '<p class="muted">Zatím žádné záznamy.</p>');
+    $app.querySelectorAll('[data-logclean]').forEach(b => b.onclick = async () => {
+      const all = b.dataset.logclean === 'all';
+      if (!await confirmDialog(all ? 'Smazat celý deník přesunů této kampaně?' : 'Smazat záznamy starší než 3 dny?',
+        { title: 'Vyčistit deník', ok: 'Smazat', danger: true })) return;
+      try {
+        const r = await api(`/api/campaigns/${cid}/inv/log${all ? '' : '?olderThanDays=3'}`, { method: 'DELETE' });
+        invToast(r.removed ? `Smazáno ${r.removed} záznamů.` : 'Nebylo co mazat.');
+        loadLog();
+      } catch (e) { invToast(e.message); }
+    });
+  };
+  logSeg.addEventListener('toggle', () => { if (logSeg.open) loadLog(); });
   await invDrawBody();
   if (invUI.zoneOpen) invZonePane();
 }

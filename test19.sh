@@ -246,4 +246,16 @@ req i_d.jar DELETE "/api/inv/zones/$Z2?force=1" > /dev/null
 check_not "zóna zmizela" "$(req i_d.jar GET /api/campaigns/$CID/inv/zones)" "Smetiste"
 check_has "deník: smazání zóny s předměty" "$(req i_d.jar GET /api/campaigns/$CID/inv/log)" "smazal zónu"
 
+echo "== úklid deníku přesunů =="
+X=$(req i_h1.jar DELETE /api/campaigns/$CID/inv/log)
+check_has "hráč deník nesmaže" "$X" "error"
+L=$(req i_d.jar GET /api/campaigns/$CID/inv/log)
+check_has "deník má záznamy" "$L" "vytvořil"
+X=$(req i_d.jar DELETE "/api/campaigns/$CID/inv/log?olderThanDays=3")
+check_has "mazání starších než 3 dny odpoví" "$X" '"removed":0'
+X=$(req i_d.jar DELETE /api/campaigns/$CID/inv/log)
+check_has "smazat vše něco odstranilo" "$X" '"removed":'
+L=$(req i_d.jar GET /api/campaigns/$CID/inv/log)
+check_has "deník je prázdný" "$L" '^\[\]$'
+
 echo; echo "🎉 Testy grafického inventáře prošly."
