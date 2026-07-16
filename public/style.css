@@ -954,3 +954,70 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 }
 .invd-contitem:hover { background: var(--accent-soft); }
 .invd-contitem img { width: 26px; height: 26px; object-fit: contain; }
+
+/* ---- inventář: iterace 3 ---- */
+/* nákres vlevo u kraje, kontejnery dostanou zbytek šířky */
+.inv-main { justify-content: flex-start; }
+.inv-conts { flex: 1; min-width: 280px; align-items: flex-start; margin-top: 0; }
+.inv-cont { width: fit-content; align-self: flex-start; }
+/* sekce formuláře předmětu */
+.formsec {
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px; margin: 12px 0;
+}
+.formsec h4 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.formsec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 16px; }
+
+/* ---- inventář: iterace 4 — kompaktní skupiny slotů, krotší stacky ---- */
+.inv-doll { display: flex; flex-direction: column; gap: 14px; padding: 4px 0; flex: none; }
+.inv-group-label {
+  font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin-bottom: 5px;
+}
+.inv-group-slots { display: flex; gap: 8px; flex-wrap: wrap; }
+/* větší slot s trvale viditelným názvem nahoře */
+.inv-slot2 {
+  width: 96px; border: 1.5px solid var(--border); border-radius: 12px;
+  background: var(--panel); box-shadow: var(--shadow); overflow: hidden; flex: none;
+}
+.inv-slot2 .sl-name {
+  display: block; text-align: center; font-size: 10.5px; font-weight: 700;
+  color: var(--muted); padding: 4px 4px 3px; background: var(--panel2);
+  border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.inv-slot2 .sl-body { position: relative; height: 78px; }
+.inv-slot2.filled .sl-name { color: var(--accent); }
+.inv-slot2.disabled { opacity: .35; }
+.inv-slot2.disabled .sl-body { background: repeating-linear-gradient(45deg, var(--panel), var(--panel) 6px, var(--panel2) 6px, var(--panel2) 12px); }
+.inv-slot2.drop-ok { outline: 3px solid var(--accent); outline-offset: -2px; }
+.inv-token.fit { inset: 2px; }
+/* stack: decentní vějíř, který nepřesahuje políčko */
+.inv-token.stacked img, .inv-token.stacked .inv-token-fallback {
+  box-shadow: 2px 2px 0 -1px var(--panel2), 2px 2px 0 0 var(--border);
+  width: calc(100% - 3px); height: calc(100% - 3px);
+}
+.inv-token .tk-qty { font-size: 9.5px; padding: 1px 4px; right: 1px; bottom: 1px; }
+
+/* ---- inventář: iterace 5 — velikost slotu podle kapacity, vlastní sloty ---- */
+.inv-slot2.cap1 { width: 68px; }
+.inv-slot2.cap2 { width: 96px; }
+.inv-slot2.cap3 { width: 124px; }
+.inv-slot2.cap4 { width: 148px; }
+.inv-slot2.cap1 .sl-body { height: 52px; }
+.inv-slot2.cap2 .sl-body { height: 62px; }
+.inv-slot2.cap3 .sl-body { height: 70px; }
+.inv-slot2.cap4 .sl-body { height: 84px; }
+.inv-group-slots { align-items: flex-end; }
+.sl-del { color: var(--muted); margin-left: 5px; cursor: pointer; font-weight: 800; }
+.sl-del:hover { color: var(--danger); text-decoration: none; }
+.inv-slot-add {
+  align-self: flex-end; height: 40px; padding: 0 14px;
+  background: transparent; border: 1.5px dashed var(--border); border-radius: 12px;
+  color: var(--muted); font-weight: 700; box-shadow: none;
+}
+.inv-slot-add:hover { border-color: var(--accent); color: var(--accent); transform: none; box-shadow: none; }
+
+/* ---- inventář: iterace 6 — podbarvení cílů při tažení ---- */
+.drop-can { box-shadow: inset 0 0 0 2px rgba(46, 158, 91, .65) !important; }
+.drop-no { box-shadow: inset 0 0 0 2px rgba(214, 69, 80, .55) !important; opacity: .75; }
+.drop-ok { outline: 3px solid var(--accent) !important; }

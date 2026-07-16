@@ -105,6 +105,12 @@ Q=$(req i_h2.jar GET /api/inv/char/$TOR | python3 -c "import sys,json;d=json.loa
 [ "$Q" = "3" ] && echo "✅ OK: split — v batohu zbyly 3" || { echo "❌ split: qty=$Q"; exit 1; }
 X=$(req i_h2.jar PUT "/api/inv/instances/$JID" '{"hp":3}')
 check_has "stack nemá životy" "$X" "error"
+req i_h2.jar PUT "/api/inv/instances/$JID" '{"qty":2}' > /dev/null
+Q=$(req i_h2.jar GET /api/inv/char/$TOR | python3 -c "import sys,json;d=json.load(sys.stdin);print([i['qty'] for i in d['items'] if i['name']=='Jablko'][0])")
+[ "$Q" = "2" ] && echo "✅ OK: vlastník změnil množství stacku na 2" || { echo "❌ qty edit: $Q"; exit 1; }
+X=$(req i_h2.jar PUT "/api/inv/instances/$JID" '{"qty":99}')
+Q=$(req i_h2.jar GET /api/inv/char/$TOR | python3 -c "import sys,json;d=json.load(sys.stdin);print([i['qty'] for i in d['items'] if i['name']=='Jablko'][0])")
+[ "$Q" = "5" ] && echo "✅ OK: množství se zarazí o stackMax (5)" || { echo "❌ qty clamp: $Q"; exit 1; }
 
 echo "== quest předmět, životy, rozbití, smazání =="
 PID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$PECET,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"neck\"}}" | grep -o '[0-9]*')
@@ -161,5 +167,27 @@ import json
 d=json.loads('$KDE2') if '$KDE2'.startswith('[') else []
 assert all(x.get('identified') for x in d), 'neidentifikovaný kus prosákl do výskytů'
 print('✅ OK: neidentifikované kusy se hráči ve výskytech neukazují')"
+
+echo "== vlastní sloty + povolené sloty předmětu =="
+X=$(req i_h1.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1}')
+check_has "slot nezaloží hráč" "$X" "error"
+SKEY=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+BRYLE=$(mk "Brýle" "{\"w\":1,\"h\":1,\"wearable\":true,\"identifiedDefault\":true,\"slots\":[\"$SKEY\"]}")
+BR=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$BRYLE,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
+X=$(req i_h1.jar PUT "/api/inv/instances/$BR/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"head\"}}")
+check_has "brýle na hlavu nejdou (vyhrazený slot)" "$X" "nepatří"
+req i_h1.jar PUT "/api/inv/instances/$BR/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"$SKEY\"}}" > /dev/null
+check_has "brýle sedí ve slotu Oči" "$(req i_h1.jar GET /api/inv/char/$BAR)" "\"slot\":\"$SKEY\""
+X=$(req i_d.jar DELETE /api/campaigns/$CID/inv/slots/$SKEY)
+check_has "obsazený slot nejde smazat" "$X" "předměty"
+req i_h1.jar PUT "/api/inv/instances/$BR/move" "{\"to\":{\"t\":\"zone\",\"zId\":$Z}}" > /dev/null
+req i_d.jar DELETE /api/campaigns/$CID/inv/slots/$SKEY > /dev/null
+CAPS=$(req i_h1.jar GET /api/inv/char/$BAR)
+check_not "smazaný slot zmizel z definic" "$CAPS" "$SKEY"
+
+echo "== otočení drží i na zemi =="
+req i_h1.jar PUT "/api/inv/instances/$OID/move" "{\"to\":{\"t\":\"zone\",\"zId\":$Z},\"rot\":1}" > /dev/null
+check_has "předmět v zóně je otočený" "$(req i_h1.jar GET /api/inv/zones/$Z/items)" '"rot":1'
+req i_h1.jar PUT "/api/inv/instances/$OID/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"handR\"}}" > /dev/null
 
 echo; echo "🎉 Testy grafického inventáře prošly."

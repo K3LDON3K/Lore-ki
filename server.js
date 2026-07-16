@@ -83,6 +83,13 @@ if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 db.settings = db.settings || { appName: APP_NAME_DEFAULT }; // nastavení aplikace
 db.notes = db.notes || []; // migrace starších dat
 db.itemInstances = db.itemInstances || []; // grafický inventář: konkrétní kusy
+// migrace: mřížky kontejnerů uložené před normalizací posunout k počátku
+db.articles.forEach(a => {
+  const c = a.item && a.item.container;
+  if (!c || !Array.isArray(c.cells) || !c.cells.length) return;
+  const mx = Math.min(...c.cells.map(x => x.x)), my = Math.min(...c.cells.map(x => x.y));
+  if (mx || my) c.cells.forEach(x => { x.x -= mx; x.y -= my; });
+});
 db.invZones = db.invZones || [];           // zóny podlahy
 db.invLog = db.invLog || [];               // deník přesunů
 delete db.inventory; delete db.invNotes;   // starý seznamový inventář zrušen
@@ -743,7 +750,7 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   const backup = {
     format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(),
-    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null },
+    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [] },
     users: [...new Set(db.memberships.filter(m => m.campaignId === cid).map(m => m.userId))]
       .map(uid => { const u = db.users.find(u => u.id === uid); return u ? { id: u.id, username: u.username } : null; }).filter(Boolean),
     memberships: db.memberships.filter(m => m.campaignId === cid),
@@ -785,7 +792,7 @@ route('POST', '/api/admin/import', async (req, res) => {
   (backup.users || []).forEach(bu => { const u = db.users.find(x => x.username.toLowerCase() === String(bu.username).toLowerCase()); if (u) userMap.set(bu.id, u.id); });
   const mu = old => userMap.has(old) ? userMap.get(old) : null;
 
-  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES] };
+  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [] };
   db.campaigns.push(camp);
   for (const s of SYSTEM_CATEGORIES) if (!camp.categories.includes(s)) camp.categories.push(s);
 
@@ -951,7 +958,7 @@ route('GET', '/api/campaigns', async (req, res, params, userId) => {
   if (!userId) return sendJSON(res, 401, { error: 'Nepřihlášen' });
   const rows = db.memberships.filter(m => m.userId === userId).map(m => {
     const c = db.campaigns.find(c => c.id === m.campaignId);
-    return c ? { id: c.id, name: c.name, role: m.role, defaultCharId: m.defaultCharId || null, description: c.description || '', iconImageId: c.iconImageId || null, homeArticleId: c.homeArticleId || null, navOrder: navOrderOf(c) } : null;
+    return c ? { id: c.id, name: c.name, role: m.role, defaultCharId: m.defaultCharId || null, description: c.description || '', iconImageId: c.iconImageId || null, homeArticleId: c.homeArticleId || null, navOrder: navOrderOf(c), customSlots: c.customSlots || [] } : null;
   }).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name, 'cs'));
   sendJSON(res, 200, rows);
 });
@@ -1451,7 +1458,11 @@ route('PUT', '/api/articles/:id', async (req, res, params, userId, query) => {
         const k = x + ',' + y; if (seen.has(k)) continue; seen.add(k);
         cells.push({ x, y, c: ['g', 'y', 'r'].includes(c.c) ? c.c : 'g' });
       }
-      if (cells.length) container = { cells };
+      if (cells.length) {
+        const mx = Math.min(...cells.map(c => c.x)), my = Math.min(...cells.map(c => c.y));
+        cells.forEach(c => { c.x -= mx; c.y -= my; }); // tvar začíná vždy v 0,0
+        container = { cells };
+      }
     }
     a.item = {
       weight: Math.max(0, parseFloat(it.weight) || 0),
@@ -1468,6 +1479,9 @@ route('PUT', '/api/articles/:id', async (req, res, params, userId, query) => {
       publicText: String(it.publicText || '').slice(0, 1000),
       secretText: String(it.secretText || '').slice(0, 2000),
       bodySize: cl(it.bodySize, 1, 4, 4),
+      slots: Array.isArray(it.slots)
+        ? it.slots.map(String).filter(s => slotCapsFor(db.campaigns.find(c => c.id === a.campaignId))[s]).slice(0, 40)
+        : [],
       container
     };
   }
@@ -1652,6 +1666,12 @@ const BODY_SLOTS = {
   ring1: 1, ring2: 1, ring3: 1, ring4: 1, pants: 2, boots: 1, back: 4
 };
 const HANDS = ['handR', 'handL'];
+/** Kapacity slotů kampaně: vestavěné + vlastní (DM je zakládá na stránce Inventář). */
+function slotCapsFor(camp) {
+  const caps = { ...BODY_SLOTS };
+  for (const s of (camp && camp.customSlots) || []) caps[s.key] = s.cap;
+  return caps;
+}
 
 function itemMeta(art) { return (art && art.item) || {}; }
 function instArticle(inst) { return db.articles.find(a => a.id === inst.articleId); }
@@ -1699,6 +1719,7 @@ function instView(inst, viewer) {
     tokenImageId: m.tokenImageId || null,
     wearable: !!m.wearable, twoHanded: !!m.twoHanded, stackable: !!m.stackable,
     noDrop: !!m.noDrop, bodyCells: instBodyCells(inst),
+    slots: Array.isArray(m.slots) ? m.slots : [],
     container: m.container ? { cells: m.container.cells } : null,
     publicText: String(m.publicText || ''),
     name: full ? art.title : (m.unidentifiedName || 'Neznámý předmět')
@@ -1733,12 +1754,14 @@ function placeError(inst, to, rot, viewer) {
   const m = itemMeta(instArticle(inst));
   if (!to || typeof to !== 'object') return 'Neplatný cíl.';
   if (to.t === 'slot') {
-    if (!BODY_SLOTS[to.slot]) return 'Neznámý slot.';
+    const caps = slotCapsFor(db.campaigns.find(c => c.id === inst.campaignId));
+    if (!caps[to.slot]) return 'Neznámý slot.';
     const ch = db.characters.find(c => c.id === to.charId);
     if (!ch || ch.campaignId !== inst.campaignId) return 'Postava nenalezena.';
     if (!viewer.isDM && ch.userId !== viewer.userId) return 'Cizí postava.';
     if (!m.wearable) return 'Předmět není nositelný — patří do batohu nebo kapsy.';
-    if (instBodyCells(inst) > BODY_SLOTS[to.slot]) return 'Do tohoto slotu se předmět nevejde.';
+    if (Array.isArray(m.slots) && m.slots.length && !m.slots.includes(to.slot)) return 'Do tohoto slotu předmět nepatří.';
+    if (instBodyCells(inst) > caps[to.slot]) return 'Do tohoto slotu se předmět nevejde.';
     const taken = db.itemInstances.find(i => i.id !== inst.id && i.loc && i.loc.t === 'slot' && i.loc.charId === ch.id && i.loc.slot === to.slot);
     if (taken) return 'Slot je obsazený.';
     const other = HANDS.find(h => h !== to.slot);
@@ -1811,7 +1834,12 @@ route('GET', '/api/inv/char/:chId', async (req, res, params, userId, query) => {
     const r = rootLoc(i);
     return r.t === 'slot' && r.charId === ch.id;
   });
-  sendJSON(res, 200, { characterId: ch.id, characterName: ch.name, slots: BODY_SLOTS, items: items.map(i => instView(i, viewer)) });
+  const camp = db.campaigns.find(c => c.id === ch.campaignId);
+  sendJSON(res, 200, {
+    characterId: ch.id, characterName: ch.name,
+    slots: slotCapsFor(camp), customSlots: (camp && camp.customSlots) || [],
+    items: items.map(i => instView(i, viewer))
+  });
 });
 
 // ---------- zóny podlahy
@@ -1908,7 +1936,7 @@ route('PUT', '/api/inv/instances/:id/move', async (req, res, params, userId, que
   }
 
   const to = normLoc(body.to);
-  const rot = to && to.t === 'grid' ? (body.rot ? 1 : 0) : 0;
+  const rot = to && (to.t === 'grid' || to.t === 'zone') ? (body.rot ? 1 : 0) : 0; // otočení platí v mřížce i na zemi
   const err = to && placeError(inst, to, rot, viewer);
   if (!to || err) return sendJSON(res, 400, { error: err || 'Neplatný cíl.' });
   inst.loc = to; inst.rot = rot;
@@ -1939,6 +1967,11 @@ route('PUT', '/api/inv/instances/:id', async (req, res, params, userId, query) =
     const m = itemMeta(instArticle(inst));
     if (m.stackable) return sendJSON(res, 400, { error: 'Stackovatelné předměty životy nemají.' });
     inst.hp = Math.max(0, Math.min(inst.hpMax, parseInt(body.hp, 10) || 0));
+  }
+  if (body.qty !== undefined) {
+    const m = itemMeta(instArticle(inst));
+    if (!m.stackable) return sendJSON(res, 400, { error: 'Množství jde měnit jen u stackovatelných předmětů.' });
+    inst.qty = Math.max(1, Math.min(m.stackMax || 10, parseInt(body.qty, 10) || 1));
   }
   save(); sseBroadcast(inst.campaignId, { inv: 1 });
   sendJSON(res, 200, instView(inst, viewer));
@@ -1978,6 +2011,38 @@ route('DELETE', '/api/inv/instances/:id', async (req, res, params, userId, query
   db.itemInstances = db.itemInstances.filter(i => i.id !== inst.id);
   invLogAdd(inst.campaignId, viewer, `odstranil ${instLogName(inst)}`);
   save(); sseBroadcast(inst.campaignId, { inv: 1 });
+  sendJSON(res, 200, { ok: true });
+});
+
+// ---------- vlastní sloty postavy (platí pro celou kampaň, zakládá DM)
+route('POST', '/api/campaigns/:cid/inv/slots', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Sloty spravuje DM.' });
+  const camp = db.campaigns.find(c => c.id === cid);
+  const body = await readJSONBody(req);
+  const label = String(body.label || '').trim().slice(0, 30);
+  if (!label) return sendJSON(res, 400, { error: 'Zadejte název slotu.' });
+  const cap = Math.max(1, Math.min(4, parseInt(body.cap, 10) || 1));
+  camp.customSlots = camp.customSlots || [];
+  const key = 'cs' + nextId(); // klíč nekoliduje s vestavěnými
+  camp.customSlots.push({ key, label, cap });
+  save(); sseBroadcast(cid, { inv: 1 });
+  sendJSON(res, 200, { key });
+});
+route('DELETE', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Sloty spravuje DM.' });
+  const camp = db.campaigns.find(c => c.id === cid);
+  const key = String(params.key);
+  if (!(camp.customSlots || []).some(s => s.key === key)) return sendJSON(res, 404, { error: 'Slot nenalezen.' });
+  if (db.itemInstances.some(i => i.campaignId === cid && i.loc && i.loc.t === 'slot' && i.loc.slot === key))
+    return sendJSON(res, 400, { error: 'Ve slotu jsou předměty — nejdřív je přesuňte.' });
+  camp.customSlots = camp.customSlots.filter(s => s.key !== key);
+  // vyčistit klíč i z povolených slotů předmětů
+  db.articles.forEach(a => { if (a.campaignId === cid && a.item && Array.isArray(a.item.slots)) a.item.slots = a.item.slots.filter(s => s !== key); });
+  save(); sseBroadcast(cid, { inv: 1 });
   sendJSON(res, 200, { ok: true });
 });
 
