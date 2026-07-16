@@ -1151,36 +1151,43 @@ function blockTypeLabel(t) { return (BLOCK_TYPES.find(x => x[0] === t) || ['', t
 
 function richToolbarHTML() {
   return `<div class="rt-toolbar">
-    <select data-styl title="Styl odstavce">
-      <option value="">Styl</option>
-      <option value="p">Běžný text</option>
-      <option value="h2">Nadpis</option>
-      <option value="h3">Menší nadpis</option>
-      <option value="blockquote">Citace</option>
-    </select>
-    <button data-c="bold" title="Tučně"><b>B</b></button>
-    <button data-c="italic" title="Kurzíva"><i>I</i></button>
-    <button data-c="underline" title="Podtržení"><u>U</u></button>
-    <select data-size title="Velikost písma">
-      <option value="">Velikost</option>
-      <option value="1">Drobné</option><option value="2">Malé</option>
-      <option value="3">Normální</option><option value="5">Velké</option>
-      <option value="6">Největší</option>
-    </select>
-    <button data-color title="Barva písma">🎨</button>
-    <button data-c="insertUnorderedList" title="Odrážkový seznam">•≡</button>
-    <button data-c="insertOrderedList" title="Číslovaný seznam">1≡</button>
-    <button data-callout title="Upozornění (žlutý rámeček)">⚠</button>
-    <button data-hr title="Vodorovný oddělovač">―</button>
-    <span class="rt-sep"></span>
-    <button data-ref title="Vložit odkaz na jiný článek">🔗</button>
-    <button data-imginsert title="Vložit obrázek">🖼</button>
-    <button data-sketch title="Nakreslit vlastní kresbu">✏️</button>
-    <button data-audio title="Vložit zvukovou nahrávku">🎵</button>
-    <button data-yt title="Vložit YouTube video">▶</button>
-    <button data-attins title="Přiložit soubor">📎</button>
-    <button data-spoiler title="Označit vybraný text jako spoiler">▓</button>
-    <button data-clear title="Vymazat formátování">⌫</button>
+    <span class="rt-grp" title="Písmo">
+      <button data-c="bold" title="Tučně"><b>B</b></button>
+      <button data-c="italic" title="Kurzíva"><i>I</i></button>
+      <button data-c="underline" title="Podtržení"><u>U</u></button>
+      <select data-size title="Velikost písma">
+        <option value="">Velikost</option>
+        <option value="1">Drobné</option><option value="2">Malé</option>
+        <option value="3">Normální</option><option value="5">Velké</option>
+        <option value="6">Největší</option>
+      </select>
+      <button data-color title="Barva písma">🎨</button>
+    </span>
+    <span class="rt-grp" title="Odstavce — použije se na označený text">
+      <select data-styl title="Styl odstavce">
+        <option value="">Styl</option>
+        <option value="p">Běžný text</option>
+        <option value="h2">Nadpis</option>
+        <option value="h3">Menší nadpis</option>
+      </select>
+      <button data-c="insertUnorderedList" data-list="ul" title="Odrážkový seznam (označte řádky)">•≡</button>
+      <button data-c="insertOrderedList" data-list="ol" title="Číslovaný seznam (označte řádky)">1≡</button>
+      <button data-quote title="Citace (označte text)">❝</button>
+      <button data-callout title="Upozornění — žlutý rámeček (označte text)">⚠</button>
+      <button data-hr title="Vodorovný oddělovač">―</button>
+    </span>
+    <span class="rt-grp" title="Vložit obsah">
+      <button data-ref title="Odkaz na jiný článek">🔗</button>
+      <button data-imginsert title="Obrázek">🖼</button>
+      <button data-sketch title="Vlastní kresba">✏️</button>
+      <button data-audio title="Zvuková nahrávka">🎵</button>
+      <button data-yt title="YouTube video">▶</button>
+      <button data-attins title="Příloha (soubor)">📎</button>
+    </span>
+    <span class="rt-grp" title="Zvláštní">
+      <button data-spoiler title="Označit vybraný text jako spoiler">▓</button>
+      <button data-clear title="Vymazat formátování">⌫</button>
+    </span>
   </div>`;
 }
 
@@ -1211,7 +1218,7 @@ function openColorMenu(x, y, onColor, onClear) {
 
 /** Kreslicí plátno 1:1 — paleta, tloušťka, guma; výsledek se nahraje jako obrázek. */
 function openSketchpad(cb) {
-  const SIZE = 640;
+  const SIZE = 800;
   const overlay = h(`<div class="modal-overlay"><div class="modal sketch-modal">
     <h3 style="margin:0 0 10px">✏️ Vlastní kresba</h3>
     <div class="sketch-tools">
@@ -1355,6 +1362,39 @@ function wireRich(f, c) {
   });
 
   const exec = (name, val) => { editor.focus(); restoreSel(); document.execCommand(name, false, val); sync(); saveSel(); };
+  // Enter uvnitř upozornění/citace = nový řádek TÉHOŽ rámečku; Enter na prázdném řádku = konec rámečku
+  editor.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    const s = getSelection();
+    if (!s.rangeCount) return;
+    const anchor = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement);
+    const box = anchor && anchor.closest && anchor.closest('.callout, blockquote');
+    if (!box || !editor.contains(box)) return;
+    e.preventDefault();
+    const r = s.getRangeAt(0);
+    r.deleteContents();
+    const html = part => { const d = document.createElement('div'); d.appendChild(part.cloneContents()); return d.innerHTML; };
+    const pre = r.cloneRange(); pre.selectNodeContents(box); pre.setEnd(r.startContainer, r.startOffset);
+    const post = r.cloneRange(); post.selectNodeContents(box); post.setStart(r.endContainer, r.endOffset);
+    const preH = html(pre);
+    const emptyLine = /(<br[^>]*>)\s*$/i.test(preH) || !preH.replace(/&nbsp;/gi, '').trim();
+    const nothingAfter = !post.toString().trim() && /^(<br[^>]*>)?\s*$/i.test(html(post));
+    if (emptyLine && nothingAfter) {
+      // druhý Enter → ven z rámečku na běžný text
+      box.innerHTML = box.innerHTML.replace(/(<br[^>]*>\s*)+$/i, '');
+      const p = document.createElement('p'); p.innerHTML = '<br>';
+      box.after(p);
+      const nr = document.createRange(); nr.setStart(p, 0); nr.collapse(true);
+      s.removeAllRanges(); s.addRange(nr);
+    } else {
+      const br = document.createElement('br');
+      r.insertNode(br);
+      if (nothingAfter) br.after(document.createElement('br')); // na konci je potřeba druhý <br>, ať je řádek vidět
+      const nr = document.createRange(); nr.setStartAfter(br); nr.collapse(true);
+      s.removeAllRanges(); s.addRange(nr);
+    }
+    sync(); saveSel();
+  });
   const insertRef = () => {
     pickArticle(art => { editor.focus(); restoreSel(); document.execCommand('insertText', false, `[[${art.id}|${art.title}]]`); sync(); });
   };
@@ -1469,7 +1509,20 @@ function wireRich(f, c) {
   window.addEventListener('scroll', hideImgHandle, { passive: true });
   f.querySelectorAll('[data-c]').forEach(btn => {
     btn.onmousedown = e => e.preventDefault();
-    btn.onclick = () => exec(btn.dataset.c);
+    btn.onclick = () => {
+      if (btn.dataset.list) { // seznamy: víc označených řádků → položka za řádek (u číslovaného execCommand selhává)
+        editor.focus(); restoreSel();
+        const s = getSelection();
+        const txt = s ? s.toString() : '';
+        if (txt.includes('\n')) {
+          const items = txt.split('\n').map(x => x.trim()).filter(Boolean);
+          document.execCommand('insertHTML', false, `<${btn.dataset.list}>${items.map(i => `<li>${esc(i)}</li>`).join('')}</${btn.dataset.list}><p><br></p>`);
+          sync(); saveSel();
+          return;
+        }
+      }
+      exec(btn.dataset.c);
+    };
   });
   const size = f.querySelector('[data-size]');
   size.onchange = () => { if (size.value) exec('fontSize', size.value); size.value = ''; };
@@ -1490,11 +1543,15 @@ function wireRich(f, c) {
   if (styl) styl.onchange = () => { if (styl.value) exec('formatBlock', `<${styl.value}>`); styl.value = ''; };
   const insHTML = html => { editor.focus(); restoreSel(); document.execCommand('insertHTML', false, html); sync(); saveSel(); };
   const co = f.querySelector('[data-callout]');
-  if (co) co.onclick = e => {
-    e.preventDefault(); editor.focus(); restoreSel();
+  const wrapBox = (open, close, placeholder) => {
+    editor.focus(); restoreSel();
     const sel = getSelection().toString();
-    insHTML(`<div class="callout">${sel.trim() ? esc(sel) : 'Upozornění…'}</div><p><br></p>`);
+    const inner = sel.trim() ? esc(sel).replace(/\n/g, '<br>') : placeholder;
+    insHTML(`${open}${inner}${close}<p><br></p>`);
   };
+  if (co) co.onclick = e => { e.preventDefault(); wrapBox('<div class="callout">', '</div>', 'Upozornění…'); };
+  const qu = f.querySelector('[data-quote]');
+  if (qu) qu.onclick = e => { e.preventDefault(); wrapBox('<blockquote>', '</blockquote>', 'Citace…'); };
   const hrB = f.querySelector('[data-hr]');
   if (hrB) hrB.onclick = e => { e.preventDefault(); insHTML('<hr><p><br></p>'); };
   const pickFile = (accept, cb) => {
@@ -1537,6 +1594,8 @@ function wireRich(f, c) {
     { icon: '𝘐', label: 'Kurzíva', action: () => exec('italic') },
     { icon: 'U̲', label: 'Podtržení', action: () => exec('underline') },
     { icon: '🎨', label: 'Barva písma…', action: () => { const s = getSelection(); const rr = s.rangeCount ? s.getRangeAt(0).getBoundingClientRect() : { left: 200, bottom: 200 }; openColorMenu(rr.left, rr.bottom + 4, applyColor, () => exec('removeFormat')); } },
+    { icon: '❝', label: 'Citace z označeného textu', action: () => wrapBox('<blockquote>', '</blockquote>', 'Citace…') },
+    { icon: '⚠', label: 'Upozornění z označeného textu', action: () => wrapBox('<div class="callout">', '</div>', 'Upozornění…') },
     { icon: '▓', label: 'Označit jako spoiler', action: insertSpoiler },
     { icon: '🌐', label: 'Označit jako cizí jazyk…', action: insertLang },
     { icon: '🖼', label: 'Vložit obrázek…', action: insertImage },

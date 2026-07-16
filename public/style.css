@@ -1182,8 +1182,8 @@ a.att:hover { border-color: var(--accent); }
 .article-body blockquote, .rich blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 4px 12px; color: var(--muted); font-style: italic; }
 
 /* kreslicí plátno */
-.sketch-modal { max-width: 400px; }
-.sketch-canvas { width: min(100%, 300px, 44vh); aspect-ratio: 1/1; margin: 0 auto; border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; display: block; }
+.sketch-modal { max-width: 640px; }
+.sketch-canvas { width: min(100%, 540px, 62vh); aspect-ratio: 1/1; margin: 0 auto; border: 1px solid var(--border); border-radius: 12px; touch-action: none; cursor: crosshair; display: block; }
 .sketch-tools { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .sketch-modal .colorgrid { display: flex; flex-wrap: wrap; gap: 5px; }
 .sketch-modal .colorswatch { width: 22px; height: 22px; border-radius: 6px; padding: 0; }
@@ -1233,3 +1233,11 @@ a.att:hover { border-color: var(--accent); }
 .restore-opt { display: block; border: 1.5px solid var(--border); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; cursor: pointer; }
 .restore-opt.on { border-color: var(--accent); background: var(--accent-soft); }
 .restore-opt input[data-k], .restore-opt select { width: 100%; }
+
+/* ---- lišta editoru ve skupinách ---- */
+.rt-grp {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 5px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel2);
+}
+.rt-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

@@ -2960,12 +2960,27 @@ route('GET', '/api/images/:id', async (req, res, params, userId, query) => {
     });
     if (!inBlock && !asCover && !asToken && !inChat) { res.writeHead(404); return res.end(); }
   }
-  const headers = { 'Content-Type': img.mime, 'Cache-Control': 'private, max-age=3600' };
+  const headers = { 'Content-Type': img.mime, 'Cache-Control': 'private, max-age=3600', 'Accept-Ranges': 'bytes' };
   if (query.download) { // stažení přílohy s původním názvem
     headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(img.originalName || 'priloha')}`;
   }
-  res.writeHead(200, headers);
-  fs.createReadStream(path.join(UPLOAD_DIR, img.filename)).pipe(res);
+  const filePath = path.join(UPLOAD_DIR, img.filename);
+  let size = 0;
+  try { size = fs.statSync(filePath).size; } catch { res.writeHead(404); return res.end(); }
+  // Range požadavky — bez nich nejde v přehrávači přetáčet audio/video
+  const rangeHdr = req.headers.range && /bytes=(\d*)-(\d*)/.exec(req.headers.range);
+  if (rangeHdr && size > 0) {
+    let start = rangeHdr[1] ? parseInt(rangeHdr[1], 10) : 0;
+    let end = rangeHdr[2] ? Math.min(parseInt(rangeHdr[2], 10), size - 1) : size - 1;
+    if (isNaN(start) || start > end || start >= size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+    return fs.createReadStream(filePath, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': size });
+  fs.createReadStream(filePath).pipe(res);
 });
 
 // Nahrání loga aplikace (zobrazí se vlevo nahoře vedle názvu a jako ikonka záložky)
