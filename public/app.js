@@ -2135,6 +2135,8 @@ async function renderArticle(aid) {
   const dm = canEdit();
   // inventář postavy (vidí DM a vlastník); poznámky z inventářů na článku předmětu
   // grafický inventář má vlastní stránku (menu → Inventář); na článku postavy je jen odkaz
+  let itemInst = null; // výskyty předmětu (jen kategorie Předměty)
+  if (a.category === 'Předměty') { try { itemInst = await api(`/api/articles/${aid}/instances`); } catch { } }
   const ownerMode = !dm && !!a.owned; // hráč edituje článek své postavy
   const editable = dm || ownerMode;
   // pracovní kopie bloků pro inline úpravy — vlastník si SUROVÁ data (neporušená
@@ -2204,6 +2206,14 @@ async function renderArticle(aid) {
 
       ${a.character ? `
       <p><a href="#/c/${cid}/inventory"><button class="small secondary">🎒 Otevřít inventář postavy</button></a></p>` : ''}
+      ${itemInst && itemInst.length ? `
+      <hr class="block-divider">
+      <h2 style="font-size:19px">🎒 Výskyty předmětu</h2>
+      <div>${itemInst.map(x => `
+        <a class="tag cat" href="#/c/${cid}/inventory" data-inst-goto="${x.where}:${x.where === 'char' ? x.charId : x.zoneId}" style="margin:0 6px 6px 0; display:inline-block">
+          ${x.where === 'char' ? '🎭 má v inventáři: ' : '📍 leží na zemi: '}${esc(x.label)}${x.qty > 1 ? ` ×${x.qty}` : ''}${!x.identified ? ' ❓' : ''}
+        </a>`).join('')}</div>` : ''}
+      ${itemInst && !itemInst.length ? `<p class="muted">🎒 Žádný kus tohoto předmětu teď ${canEdit() ? 'v kampani není' : 'nemáte a neleží na zemi'}.</p>` : ''}
 
       <hr class="block-divider">
       <h2 style="font-size:19px">📝 Poznámky</h2>
@@ -2239,6 +2249,13 @@ async function renderArticle(aid) {
     </div>`, a.isHome
     ? { active: 'home' }
     : { active: 'articles', activeCat: a.category || undefined, crumbs: [{ label: a.title }] });
+
+  // proklik z výskytu předmětu rovnou na správné místo v inventáři
+  $app.querySelectorAll('[data-inst-goto]').forEach(el => el.onclick = () => {
+    const [where, id] = el.dataset.instGoto.split(':');
+    if (where === 'char') { invUI.tab = 'c' + id; invUI.zoneOpen = null; }
+    else invUI.zoneOpen = +id;
+  });
 
   // ---------- galerie → lightbox s listováním šipkami (stejné pole jako nahoře!)
   {
@@ -3970,7 +3987,7 @@ function invToast(msg) {
 function invTokenEl(it, cell, fit = false) {
   const w = it.rot ? it.h : it.w, h0 = it.rot ? it.w : it.h;
   const el = document.createElement('div');
-  el.className = 'inv-token' + (it.broken ? ' broken' : '');
+  el.className = 'inv-token' + (it.broken ? ' broken' : '') + (it.stackable && it.qty > 1 ? ' stacked' : '');
   el.dataset.inst = it.id;
   if (it.articleId) el.dataset.art = it.articleId;
   if (it.stackable) el.dataset.stack = 1;
@@ -3982,7 +3999,6 @@ function invTokenEl(it, cell, fit = false) {
   el.innerHTML = `${img}
     ${!it.identified ? '<span class="tk-unident" title="Neidentifikováno">?</span>' : ''}
     ${it.stackable && it.qty > 1 ? `<span class="tk-qty">×${it.qty}</span>` : ''}
-    ${!it.stackable ? `<span class="tk-hp ${it.hp <= 3 ? 'low' : ''}">${it.hp}/${it.hpMax}</span>` : ''}
     ${it.broken ? '<span class="tk-broken">✕</span>' : ''}`;
   invAttachDrag(el, it);
   return el;
@@ -4104,7 +4120,7 @@ function invAttachDrag(el, it) {
         if (t.type === 'merge') await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { mergeInto: t.into } });
         else if (t.type === 'take') { if (!await invTakeToChar(it, t.charId)) return; }
         else await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: t.to, rot } });
-        invDrawBody();
+        invRefresh();
       } catch (err) { invToast(err.message); }
     };
     document.addEventListener('pointermove', onMove);
@@ -4144,19 +4160,18 @@ async function renderInventory() {
   let chars = [], zones = [];
   try { [chars, zones] = await Promise.all([api(`/api/campaigns/${cid}/inv/chars`), api(`/api/campaigns/${cid}/inv/zones`)]); } catch { }
   invUI.chars = chars; invUI.zones = zones;
-  const valid = invUI.tab && (
-    (invUI.tab[0] === 'c' && chars.some(c => 'c' + c.id === invUI.tab)) ||
-    (invUI.tab[0] === 'z' && zones.some(z => 'z' + z.id === invUI.tab)));
-  if (!valid) invUI.tab = chars.length ? 'c' + chars[0].id : (zones.length ? 'z' + zones[0].id : null);
+  const valid = invUI.tab && invUI.tab[0] === 'c' && chars.some(c => 'c' + c.id === invUI.tab);
+  if (!valid) invUI.tab = chars.length ? 'c' + chars[0].id : null;
+  if (invUI.zoneOpen && !zones.some(z => z.id === invUI.zoneOpen)) invUI.zoneOpen = null;
   const dm = canEdit();
 
   shell(`
     <div class="pagehead"><h1>🎒 Inventář</h1></div>
-    <p class="muted" style="margin-top:-8px">Předměty přetahujte myší nebo prstem. Během tažení otočíte token klávesou <b>R</b>; kliknutím otevřete detail. Předmět ze země si vezmete <b>přetažením na záložku své postavy</b> nahoře (najde si volné místo sám) nebo tlačítkem v detailu. Předání jinému hráči: odložte do zóny, on si vezme.</p>
+    <p class="muted" style="margin-top:-8px">Předměty přetahujte myší nebo prstem. Během tažení otočíte token klávesou <b>R</b>; kliknutím otevřete detail. Kliknutím na <b>📍 zónu</b> nahoře se podlaha otevře v pravém panelu — předměty pak přetahujete rovnou mezi zemí a postavou (na zem jde předmět pustit i na tlačítko zóny). Předání jinému hráči: odložte do zóny, on si vezme.</p>
     <div class="inv-tabs">
       ${chars.map(c => `<button class="inv-tab ${invUI.tab === 'c' + c.id ? 'on' : ''}" data-tab="c${c.id}" data-drop-take="${c.id}">🎭 ${esc(c.name)}</button>`).join('')}
       <span class="inv-tab-sep"></span>
-      ${zones.map(z => `<button class="inv-tab zone ${invUI.tab === 'z' + z.id ? 'on' : ''}" data-tab="z${z.id}">📍 ${esc(z.name)} <span class="count">${z.count}</span></button>`).join('')}
+      ${zones.map(z => `<button class="inv-tab zone ${invUI.zoneOpen === z.id ? 'on' : ''}" data-zonebtn="${z.id}" data-drop-zone="${z.id}" title="Otevřít zónu v pravém panelu; předmět sem jde i přetáhnout">📍 ${esc(z.name)} <span class="count">${z.count}</span></button>`).join('')}
       ${dm ? `<button class="inv-tab ghostbtn" id="invZoneAdd" title="Nová zóna podlahy">＋ zóna</button>` : ''}
     </div>
     <div id="invBody"><p class="muted">Načítám…</p></div>
@@ -4167,6 +4182,12 @@ async function renderInventory() {
     { active: 'inventory' });
 
   $app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { invUI.tab = b.dataset.tab; renderInventory(); });
+  $app.querySelectorAll('[data-zonebtn]').forEach(b => b.onclick = () => {
+    const z = +b.dataset.zonebtn;
+    invUI.zoneOpen = invUI.zoneOpen === z ? null : z;
+    if (invUI.zoneOpen) invZonePane(); else closeRefPane();
+    renderInventoryTabsMark();
+  });
   const za = $app.querySelector('#invZoneAdd');
   if (za) za.onclick = async () => {
     const name = prompt('Název zóny (např. Táborák):');
@@ -4183,16 +4204,19 @@ async function renderInventory() {
       : '<p class="muted">Zatím žádné záznamy.</p>';
   });
   await invDrawBody();
+  if (invUI.zoneOpen) invZonePane();
+}
+/** Označení aktivní zóny v liště bez plného překreslení. */
+function renderInventoryTabsMark() {
+  document.querySelectorAll('[data-zonebtn]').forEach(b => b.classList.toggle('on', +b.dataset.zonebtn === invUI.zoneOpen));
 }
 
 /** Překreslí tělo stránky podle aktivní záložky (volá se i po SSE zprávě). */
 async function invDrawBody() {
   const body = document.getElementById('invBody');
-  if (!body || !invUI.tab) { if (body) body.innerHTML = '<p class="muted">Žádné postavy ani zóny. DM založí zónu tlačítkem ＋.</p>'; return; }
-  const cid = state.campaign.id;
-  const dm = canEdit();
-
-  if (invUI.tab[0] === 'c') {
+  if (!body) return;
+  if (!invUI.tab) { body.innerHTML = '<p class="muted">Žádná postava — inventář se váže na postavy. Zóny podlahy otevřete tlačítky 📍 nahoře.</p>'; if (invUI.zoneOpen) invZonePane(); return; }
+  {
     const chId = +invUI.tab.slice(1);
     let data;
     try { data = await api(`/api/inv/char/${chId}`); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
@@ -4225,8 +4249,10 @@ async function invDrawBody() {
         if (other) { other.classList.add('disabled'); other.removeAttribute('data-drop-slot'); other.title = 'Obouruční zbraň zabírá obě ruce'; }
       }
     }
-    body.appendChild(doll);
-    // nasazené kontejnery
+    // nákres vlevo, kontejnery ve sloupci napravo
+    const main = document.createElement('div');
+    main.className = 'inv-main';
+    main.appendChild(doll);
     const conts = data.items.filter(i => i.container && i.loc && i.loc.t === 'slot');
     if (conts.length) {
       const wrap = document.createElement('div');
@@ -4234,53 +4260,78 @@ async function invDrawBody() {
       for (const cont of conts) {
         const box = document.createElement('div');
         box.className = 'inv-cont';
+        box.dataset.contbox = cont.id;
         box.innerHTML = `<div class="inv-cont-title">${esc(cont.name)} <span class="muted">(${INV_SLOT_DEFS[cont.loc.slot] ? INV_SLOT_DEFS[cont.loc.slot].l : cont.loc.slot})</span></div>
           <div class="inv-cont-legend"><span class="lg c-g"></span>volná akce <span class="lg c-y"></span>akce <span class="lg c-r"></span>celé kolo</div>`;
         box.appendChild(invContGridEl(cont, data.items));
         wrap.appendChild(box);
       }
-      body.appendChild(wrap);
+      main.appendChild(wrap);
     }
+    body.appendChild(main);
     return;
   }
 
-  // ---------- zóna podlahy
-  const zId = +invUI.tab.slice(1);
+}
+function renderInventoryTabsRefresh() { }
+
+/** Zóna podlahy v pravém panelu (jako reference) — jde z ní táhnout rovnou do slotů. */
+async function invZonePane() {
+  const zId = invUI.zoneOpen;
+  if (!zId) return;
+  const cid = state.campaign.id;
+  const dm = canEdit();
+  const zone = invUI.zones.find(z => z.id === zId) || { name: 'Zóna' };
   let items = [];
-  try { items = await api(`/api/inv/zones/${zId}/items`); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
-  invUI.items = items;
-  body.innerHTML = `
-    <div class="toolbar" style="margin:0 0 10px">
-      ${dm ? `<button class="small" id="invSpawn">＋ Vytvořit předmět</button>
-              <button class="small danger" id="invZoneDel">Smazat zónu</button>` : ''}
-      <span class="muted">Ze země si předmět vezmete přetažením na záložku své postavy nahoře, nebo kliknutím na předmět → „Vzít si“.</span>
+  try { items = await api(`/api/inv/zones/${zId}/items`); } catch (e) { invToast(e.message); return; }
+  if (invUI.zoneOpen !== zId) return; // mezitím zavřeno/přepnuto
+  invUI.zoneItems = items;
+  const el = refPaneEl(); if (!el) return;
+  refPane.id = null;
+  invUI.paneMode = 'zone';
+  el.innerHTML = `
+    <div class="refpane-head">
+      <b>📍 ${esc(zone.name)}</b>
+      <div style="flex:1"></div>
+      ${dm ? `<button class="small" data-k="spawn" title="Vytvořit nový předmět v této zóně">＋ předmět</button>
+              <button class="small danger" data-k="zdel" title="Smazat zónu (musí být prázdná)">🗑</button>` : ''}
+      <button class="small ghost" data-k="close" title="Zavřít">✕</button>
     </div>
-    <div class="inv-zonearea" data-drop-zone="${zId}"></div>`;
-  const area = body.querySelector('.inv-zonearea');
-  if (!items.length) area.innerHTML = '<p class="muted" style="padding:16px">Prázdno. Sem se odkládají předměty pro ostatní.</p>';
+    <div class="refpane-body">
+      <p class="muted" style="margin-top:0">Společná odkládací plocha. Předměty táhněte na nákres postavy vlevo, nebo sem.</p>
+      <div class="inv-zonearea pane" data-drop-zone="${zId}"></div>
+    </div>`;
+  const area = el.querySelector('.inv-zonearea');
+  if (!items.length) area.innerHTML = '<p class="muted" style="padding:12px">Prázdno.</p>';
   for (const it of items) area.appendChild(invTokenEl(it, 44));
-  const sp = body.querySelector('#invSpawn');
+  el.querySelector('[data-k=close]').onclick = () => { invUI.zoneOpen = null; invUI.paneMode = null; closeRefPane(); renderInventoryTabsMark(); };
+  const sp = el.querySelector('[data-k=spawn]');
   if (sp) sp.onclick = () => pickArticle(async art => {
-    try {
-      await api(`/api/campaigns/${cid}/inv/instances`, { method: 'POST', body: { articleId: art.id, to: { t: 'zone', zId } } });
-      invDrawBody(); renderInventoryTabsRefresh();
-    } catch (e) { invToast(e.message); }
+    try { await api(`/api/campaigns/${cid}/inv/instances`, { method: 'POST', body: { articleId: art.id, to: { t: 'zone', zId } } }); invZonePane(); }
+    catch (e) { invToast(e.message); }
   }, { category: 'Předměty' });
-  const zd = body.querySelector('#invZoneDel');
+  const zd = el.querySelector('[data-k=zdel]');
   if (zd) zd.onclick = async () => {
     if (!await confirmDialog('Smazat zónu? Musí být prázdná.', { title: 'Smazat zónu', ok: 'Smazat', danger: true })) return;
-    try { await api(`/api/inv/zones/${zId}`, { method: 'DELETE' }); invUI.tab = null; renderInventory(); }
+    try { await api(`/api/inv/zones/${zId}`, { method: 'DELETE' }); invUI.zoneOpen = null; invUI.paneMode = null; renderInventory(); }
     catch (e) { invToast(e.message); }
   };
 }
-function renderInventoryTabsRefresh() { /* počty u zón se srovnají při příštím překreslení */ }
+
 
 /** Detail předmětu v pravém panelu (stejný vzor jako reference). */
 async function invDetail(instId) {
-  const it = invUI.items.find(i => i.id === instId);
+  const it = invUI.items.find(i => i.id === instId) || (invUI.zoneItems || []).find(i => i.id === instId);
   if (!it) return;
   const el = refPaneEl(); if (!el) return;
   refPane.id = null; // panel teď patří inventáři
+  invUI.paneMode = 'detail';
+  // vybraný kontejner zvýraznit v layoutu
+  document.querySelectorAll('[data-contbox]').forEach(b => b.classList.toggle('sel', it.container && +b.dataset.contbox === it.id));
+  // obsah kontejneru pro výpis v detailu
+  const contents = it.container
+    ? [...invUI.items, ...(invUI.zoneItems || [])].filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === it.id)
+    : [];
   const dm = canEdit();
   el.innerHTML = `
     <div class="refpane-head">
@@ -4292,7 +4343,7 @@ async function invDetail(instId) {
       <h2 class="refpane-title">${esc(it.name)} ${!it.identified ? '<span class="tag" title="Neidentifikováno">❓ neidentifikováno</span>' : ''} ${it.broken ? '<span class="tag" style="color:var(--danger)">rozbitý</span>' : ''}</h2>
       ${it.publicText ? `<p>${esc(it.publicText)}</p>` : ''}
       ${it.secretText ? `<div class="invd-secret"><b>🔮 Odhalené vlastnosti</b><br>${esc(it.secretText)}</div>` : ''}
-      ${it.stackable ? `<p><b>Množství:</b> ×${it.qty} ${it.qty > 1 ? `<button class="small secondary" data-k="split">Rozdělit stack…</button>` : ''}</p>` : `
+      ${it.stackable ? `<p><b>Ve stacku:</b> <span class="tag">🗃 ×${it.qty} ks</span> ${it.qty > 1 ? `<button class="small secondary" data-k="split">Rozdělit stack…</button>` : ''}</p>` : `
       <div class="invd-hp">
         <b>Životy</b>
         <button class="small secondary" data-k="hpm" ${it.hp <= 0 ? 'disabled' : ''}>−</button>
@@ -4308,25 +4359,38 @@ async function invDetail(instId) {
         ${it.articleId ? `<a href="#/c/${state.campaign.id}/a/${it.articleId}"><button class="small ghost">📄 Článek předmětu</button></a>` : ''}
       </div>
       ${it.noDrop ? '<p class="muted" style="margin-top:10px">📌 Tento předmět nejde odhodit na zem.</p>' : ''}
+      ${it.container ? `
+      <h3 style="margin:16px 0 6px">🎒 Obsah</h3>
+      ${contents.length ? contents.map(c => `<div class="invd-contitem" data-open-inst="${c.id}">
+        ${c.tokenImageId ? `<img src="${imgUrl(c.tokenImageId)}" alt="">` : '<span>📦</span>'}
+        <span>${esc(c.name)}</span>${c.stackable && c.qty > 1 ? `<span class="tag">×${c.qty}</span>` : ''}
+      </div>`).join('') : '<p class="muted">Prázdný.</p>'}` : ''}
     </div>`;
-  const done = () => { closeRefPane(); invDrawBody(); };
-  el.querySelector('[data-k=close]').onclick = () => closeRefPane();
+  // zavření detailu se vrací do panelu zóny (pokud byl otevřený)
+  const back = () => {
+    document.querySelectorAll('[data-contbox].sel').forEach(b => b.classList.remove('sel'));
+    invUI.paneMode = null;
+    if (invUI.zoneOpen) invZonePane(); else closeRefPane();
+  };
+  const done = () => { invRefresh(); back(); };
+  el.querySelector('[data-k=close]').onclick = back;
+  el.querySelectorAll('[data-open-inst]').forEach(r => r.onclick = () => invDetail(+r.dataset.openInst));
   el.querySelectorAll('[data-take]').forEach(b => b.onclick = async () => {
     if (await invTakeToChar(it, +b.dataset.take)) done();
   });
   const hpSet = async hp => {
-    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { hp } }); invDrawBody(); invDetailReload(it.id); }
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { hp } }); invRefresh(); invDetailReload(it.id); }
     catch (e) { invToast(e.message); }
   };
   const q = k => el.querySelector(`[data-k=${k}]`);
   if (q('hpm')) q('hpm').onclick = () => hpSet(it.hp - 1);
   if (q('hpp')) q('hpp').onclick = () => hpSet(it.hp + 1);
   if (q('hpmax')) q('hpmax').onchange = async () => {
-    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { hpMax: parseInt(q('hpmax').value, 10) } }); invDrawBody(); invDetailReload(it.id); }
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { hpMax: parseInt(q('hpmax').value, 10) } }); invRefresh(); invDetailReload(it.id); }
     catch (e) { invToast(e.message); }
   };
   if (q('ident')) q('ident').onclick = async () => {
-    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { identified: !it.identified } }); invDrawBody(); invDetailReload(it.id); }
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { identified: !it.identified } }); invRefresh(); invDetailReload(it.id); }
     catch (e) { invToast(e.message); }
   };
   if (q('rot')) q('rot').onclick = async () => {
@@ -4350,15 +4414,19 @@ async function invDetail(instId) {
 }
 /** Po změně načte čerstvá data instance a překreslí detail. */
 async function invDetailReload(instId) {
-  // items se překreslily v invDrawBody — počkat na ně a znovu otevřít detail
-  setTimeout(() => { if (invUI.items.some(i => i.id === instId)) invDetail(instId); }, 150);
+  // items se překreslily — počkat na ně a znovu otevřít detail
+  setTimeout(() => {
+    if (invUI.items.some(i => i.id === instId) || (invUI.zoneItems || []).some(i => i.id === instId)) invDetail(instId);
+  }, 200);
 }
+/** Překreslí tělo i otevřený panel zóny. */
+function invRefresh() { invDrawBody(); if (invUI.zoneOpen) invZonePane(); }
 /** SSE zpráva o změně inventáře → překreslit, pokud je stránka otevřená. */
 let invPushTimer = null;
 function invOnPush() {
   if (!location.hash.includes('/inventory')) return;
   clearTimeout(invPushTimer);
-  invPushTimer = setTimeout(() => invDrawBody(), 200);
+  invPushTimer = setTimeout(() => invRefresh(), 200);
 }
 
 // ---------------------------------------------------------------- start

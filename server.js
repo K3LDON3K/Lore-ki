@@ -1981,6 +1981,33 @@ route('DELETE', '/api/inv/instances/:id', async (req, res, params, userId, query
   sendJSON(res, 200, { ok: true });
 });
 
+// ---------- výskyty předmětu (pro článek předmětu)
+route('GET', '/api/articles/:id/instances', async (req, res, params, userId, query) => {
+  const a = db.articles.find(a => a.id === parseInt(params.id, 10));
+  if (!a) return sendJSON(res, 404, { error: 'Článek nenalezen.' });
+  const viewer = userId && resolveViewer(userId, a.campaignId, query.viewAs);
+  if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
+  if (!viewer.isDM && !articleVisibleToPlayer(a.id, viewer.userId)) return sendJSON(res, 404, { error: 'Článek nenalezen.' });
+  const out = [];
+  for (const inst of db.itemInstances.filter(i => i.articleId === a.id)) {
+    const root = rootLoc(inst);
+    if (root.t === 'zone') {
+      const z = db.invZones.find(z => z.id === root.zId);
+      if (!z) continue;
+      // hráči neprozradit, že neidentifikovaný kus na zemi je právě tento předmět
+      if (!viewer.isDM && !inst.identified) continue;
+      out.push({ id: inst.id, qty: inst.qty, identified: !!inst.identified, where: 'zone', zoneId: z.id, label: z.name });
+    } else if (root.t === 'slot') {
+      const ch = db.characters.find(c => c.id === root.charId);
+      if (!ch) continue;
+      if (!viewer.isDM && ch.userId !== viewer.userId) continue; // cizí inventáře zůstávají skryté
+      if (!viewer.isDM && !inst.identified) continue;
+      out.push({ id: inst.id, qty: inst.qty, identified: !!inst.identified, where: 'char', charId: ch.id, label: ch.name });
+    }
+  }
+  sendJSON(res, 200, out);
+});
+
 // ---------- deník přesunů
 route('GET', '/api/campaigns/:cid/inv/log', async (req, res, params, userId, query) => {
   const cid = parseInt(params.cid, 10);

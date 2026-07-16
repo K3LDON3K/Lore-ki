@@ -936,3 +936,21 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
   .inv-slot { transform-origin: top left; }
 }
 .inv-tab.drop-ok { outline: 3px solid var(--accent); }
+
+/* ---- inventář: iterace 2 (layout, stacky, panel zóny, výběr kontejneru) ---- */
+.inv-main { display: flex; gap: 30px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+.inv-conts { flex-direction: column; margin-top: 12px; justify-content: flex-start; }
+.inv-cont.sel { outline: 3px solid var(--accent); }
+/* stack: „vějíř karet“ pod tokenem naznačí víc kusů */
+.inv-token.stacked img, .inv-token.stacked .inv-token-fallback {
+  box-shadow: 3px 3px 0 -1px var(--panel2), 3px 3px 0 0 var(--border),
+              6px 6px 0 -1px var(--panel2), 6px 6px 0 0 var(--border);
+  border-radius: 6px;
+}
+.inv-zonearea.pane { min-height: 140px; background: var(--panel2); }
+.invd-contitem {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 8px; cursor: pointer; font-size: 13.5px;
+}
+.invd-contitem:hover { background: var(--accent-soft); }
+.invd-contitem img { width: 26px; height: 26px; object-fit: contain; }

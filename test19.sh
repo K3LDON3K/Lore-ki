@@ -149,4 +149,17 @@ CNT=$(req i_d.jar GET /api/inv/zones/$NZID/items | python3 -c "import sys,json;p
 [ "$CNT" -ge 1 ] && echo "✅ OK: instance přežily obnovu ($CNT v zóně)" || { echo "❌ v obnovené zóně nic není"; exit 1; }
 req i_d.jar DELETE /api/admin/campaigns/$NEWID > /dev/null
 
+echo "== výskyty předmětu na článku (oprávnění) =="
+KDE=$(req i_d.jar GET /api/articles/$JAB/instances)
+check_has "DM vidí výskyt u postavy" "$KDE" "Toruk"
+check_has "DM vidí výskyt na zemi" "$KDE" "Táborák"
+KDE=$(req i_h1.jar GET /api/articles/$JAB/instances)
+check_not "hráč nevidí výskyt u CIZÍ postavy" "$KDE" "Toruk"
+KDE2=$(req i_h1.jar GET /api/articles/$MEC/instances 2>/dev/null || echo '[]')
+python3 -c "
+import json
+d=json.loads('$KDE2') if '$KDE2'.startswith('[') else []
+assert all(x.get('identified') for x in d), 'neidentifikovaný kus prosákl do výskytů'
+print('✅ OK: neidentifikované kusy se hráči ve výskytech neukazují')"
+
 echo; echo "🎉 Testy grafického inventáře prošly."
