@@ -12,13 +12,15 @@ check_has() { local desc=$1 out=$2 s=$3
   if echo "$out" | grep -q "$s"; then echo "✅ OK: $desc"; else echo "❌ FAIL: $desc — chybí: $s ($(echo $out | head -c 250))"; exit 1; fi; }
 jv() { python3 -c "import sys,json;d=json.load(sys.stdin);print($2)" <<< "$1"; }
 
-cd /tmp && rm -f d10.jar k10.jar
+cd /tmp && rm -f d10.jar k10.jar p10.jar
 
 echo "== příprava: hráč se DVĚMA postavami (Alfa, Beta) =="
 req d10.jar POST /api/register '{"username":"dm10","password":"test1234"}' > /dev/null
 CID=$(req d10.jar POST /api/campaigns '{"name":"Test10"}' | grep -o '"id":[0-9]*' | cut -d: -f2)
 req d10.jar POST /api/campaigns/$CID/users '{"username":"kubik10","password":"heslo123","characterName":"Alfa"}' > /dev/null
+req d10.jar POST /api/campaigns/$CID/users '{"username":"pauli10","password":"heslo123","characterName":"Cizinec"}' > /dev/null
 req k10.jar POST /api/login '{"username":"kubik10","password":"heslo123"}' > /dev/null
+req p10.jar POST /api/login '{"username":"pauli10","password":"heslo123"}' > /dev/null
 CHARS=$(req d10.jar GET /api/campaigns/$CID/characters)
 KUID=$(jv "$CHARS" "[c['userId'] for c in d if c['name']=='Alfa'][0]")
 req d10.jar POST /api/campaigns/$CID/characters "{\"userId\":$KUID,\"name\":\"Beta\"}" > /dev/null
@@ -58,14 +60,14 @@ check_has "Alfa svou vzpomínku vidí" "$V_A" "Vzpomínka Alfy"
 V_B=$(req k10.jar GET "/api/articles/$ART?viewChar=$BETA")
 check_not "Beta (týž hráč) vzpomínku Alfy NEVIDÍ" "$V_B" "Vzpomínka Alfy"
 
-echo "== inventář jen pro danou postavu =="
+echo "== inventář: vlastník vidí, cizí uživatel ne (grafický inventář) =="
 MEC=$(req d10.jar POST /api/campaigns/$CID/articles '{"title":"Dýka"}' | grep -o '[0-9]*')
-req d10.jar PUT /api/articles/$MEC '{"title":"Dýka","category":"Předměty","item":{"weight":1,"price":"2 zl","rarity":"Běžný"},"blocks":[{"type":"paragraph","visibility":"all","content":{"text":"Obyčejná dýka."}}]}' > /dev/null
-req d10.jar POST /api/characters/$ALFA/inventory "{\"itemArticleId\":$MEC,\"qty\":1}" > /dev/null
-I_A=$(req k10.jar GET "/api/characters/$ALFA/inventory?viewChar=$ALFA")
-check_has "Alfa svůj inventář vidí" "$I_A" "Dýka"
-I_B=$(req k10.jar GET "/api/characters/$ALFA/inventory?viewChar=$BETA")
-check_has "za Betu inventář Alfy NEvidí" "$I_B" error
+req d10.jar PUT /api/articles/$MEC '{"title":"Dýka","category":"Předměty","item":{"weight":1,"wearable":true,"identifiedDefault":true},"blocks":[{"type":"paragraph","visibility":"all","content":{"text":"Obyčejná dýka."}}]}' > /dev/null
+req d10.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$MEC,\"to\":{\"t\":\"slot\",\"charId\":$ALFA,\"slot\":\"handR\"}}" > /dev/null
+I_A=$(req k10.jar GET "/api/inv/char/$ALFA")
+check_has "vlastník inventář Alfy vidí" "$I_A" "Dýka"
+I_P=$(req p10.jar GET "/api/inv/char/$ALFA" 2>/dev/null || echo '{"error":"nenalezena"}')
+check_has "cizí uživatel inventář Alfy nevidí" "$I_P" "nenalezena"
 
 echo "== poznámka patří postavě =="
 req k10.jar POST "/api/articles/$ART/notes?viewChar=$ALFA" '{"text":"Poznámka Alfy.","visibleTo":[]}' > /dev/null

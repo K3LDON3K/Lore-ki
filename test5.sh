@@ -1,5 +1,5 @@
 #!/bin/bash
-# Testy: inventář, poznámky k předmětům, změna vlastníka postavy, metadata předmětu.
+# Testy: metadata předmětu, instance v grafickém inventáři, změna vlastníka postavy.
 set -e
 B=http://localhost:3000
 req() { local jar=$1 method=$2 path=$3 data=$4
@@ -28,59 +28,25 @@ PAULI_UID=$(jv "$CHARS" "[c['userId'] for c in d if c['name']=='Toruk'][0]")
 
 echo "== předmět s metadaty =="
 MEC=$(req d5.jar POST /api/campaigns/$CID/articles '{"title":"Plamenný meč"}' | grep -o '[0-9]*')
-req d5.jar PUT /api/articles/$MEC '{"title":"Plamenný meč","description":"Meč sálající žárem","category":"Předměty","item":{"weight":3,"price":"5000 zl","rarity":"Velmi vzácný"},"blocks":[{"type":"paragraph","visibility":"dm","content":{"text":"Ve skutečnosti je prokletý."}}]}' > /dev/null
+req d5.jar PUT /api/articles/$MEC '{"title":"Plamenný meč","description":"Meč sálající žárem","category":"Předměty","item":{"weight":3,"price":"5000 zl","rarity":"Velmi vzácný","wearable":true},"blocks":[{"type":"paragraph","visibility":"dm","content":{"text":"Ve skutečnosti je prokletý."}}]}' > /dev/null
 M=$(req d5.jar GET /api/articles/$MEC)
 check_has "metadata předmětu uložena" "$M" '"rarity":"Velmi vzácný"'
 
-echo "== vložení do inventáře =="
-X=$(req k5.jar POST /api/characters/$KUBIRIK/inventory "{\"itemArticleId\":$MEC,\"qty\":1}")
-check_has "hráč předmět vložit nemůže" "$X" error
+echo "== instance předmětu (grafický inventář) =="
+Z=$(req d5.jar POST /api/campaigns/$CID/inv/zones '{"name":"Zeme"}' | grep -o '[0-9]*')
+X=$(req k5.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$MEC,\"to\":{\"t\":\"zone\",\"zId\":$Z}}")
+check_has "hráč předmět vytvořit nemůže" "$X" error
 NEPREDMET=$(req d5.jar POST /api/campaigns/$CID/articles '{"title":"Hospoda"}' | grep -o '[0-9]*')
-X=$(req d5.jar POST /api/characters/$KUBIRIK/inventory "{\"itemArticleId\":$NEPREDMET,\"qty\":1}")
-check_has "vložit lze jen kategorii Předměty" "$X" error
-req d5.jar POST /api/characters/$KUBIRIK/inventory "{\"itemArticleId\":$MEC,\"qty\":1}" > /dev/null
-INV=$(req k5.jar GET /api/characters/$KUBIRIK/inventory)
+X=$(req d5.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$NEPREDMET,\"to\":{\"t\":\"zone\",\"zId\":$Z}}")
+check_has "vytvořit lze jen kategorii Předměty" "$X" error
+req d5.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$MEC,\"identified\":true,\"to\":{\"t\":\"slot\",\"charId\":$KUBIRIK,\"slot\":\"handR\"}}" > /dev/null
+INV=$(req k5.jar GET /api/inv/char/$KUBIRIK)
 check_has "vlastník vidí předmět v inventáři" "$INV" "Plamenný meč"
-check_has "vč. vzácnosti" "$INV" "Velmi vzácný"
-IID=$(jv "$INV" "d['entries'][0]['id']")
-X=$(req p5.jar GET /api/characters/$KUBIRIK/inventory)
-check_has "cizí hráč inventář nevidí" "$X" error
-VA=$(req d5.jar GET "/api/characters/$KUBIRIK/inventory?viewAs=$PAULI_UID")
-check_has "view-as: DM jako Paulí inventář Kubirika nevidí" "$VA" error
-# skrytý článek předmětu: linkable=false, ale předmět v inventáři vidět je
-check_has "skrytý článek předmětu → linkable false" "$INV" '"linkable":false'
-check_not "obsah článku předmětu neunikl do inventáře" "$INV" "prokletý"
-
-echo "== poznámky k předmětu v inventáři =="
-req k5.jar POST /api/inventory/$IID/notes '{"text":"Hráčova tajná zpráva DM o meči.","visibility":"dm"}' > /dev/null
-req d5.jar POST /api/inventory/$IID/notes '{"text":"DM info jen pro sebe.","visibility":"dm"}' > /dev/null
-req d5.jar POST /api/inventory/$IID/notes '{"text":"DM vzkaz hráči: meč občas šeptá.","visibility":"dm_owner"}' > /dev/null
-K_INV=$(req k5.jar GET /api/characters/$KUBIRIK/inventory)
-check_has "hráč vidí svou dm-poznámku (autor)" "$K_INV" "tajná zpráva"
-check_has "hráč vidí dm_owner poznámku od DM" "$K_INV" "šeptá"
-check_not "hráč nevidí čistě DM poznámku" "$K_INV" "jen pro sebe"
-D_INV=$(req d5.jar GET /api/characters/$KUBIRIK/inventory)
-check_has "DM vidí vše" "$D_INV" "jen pro sebe"
-
-echo "== poznámky na článku předmětu dle oprávnění =="
-# zviditelnit článek předmětu, aby ho hráči viděli
-req d5.jar PUT /api/articles/$MEC '{"title":"Plamenný meč","description":"Meč sálající žárem","category":"Předměty","item":{"weight":3,"price":"5000 zl","rarity":"Velmi vzácný"},"blocks":[{"type":"paragraph","visibility":"all","content":{"text":"Čepel plane ohněm."}}]}' > /dev/null
-K_IN=$(req k5.jar GET /api/articles/$MEC/inventory-notes)
-check_has "hráč na článku předmětu vidí výskyt u své postavy" "$K_IN" "Kubirik"
-check_has "vidí dm_owner poznámku" "$K_IN" "šeptá"
-check_not "nevidí DM-only poznámku (cizí)" "$K_IN" "jen pro sebe"
-P_IN=$(req p5.jar GET /api/articles/$MEC/inventory-notes)
-check_not "cizí hráč nevidí žádný výskyt" "$P_IN" "Kubirik" "šeptá"
-D_IN=$(req d5.jar GET /api/articles/$MEC/inventory-notes)
-check_has "DM vidí všechny výskyty a poznámky" "$D_IN" "jen pro sebe"
-
-echo "== množství =="
-req d5.jar POST /api/characters/$KUBIRIK/inventory "{\"itemArticleId\":$MEC,\"qty\":2}" > /dev/null
-Q=$(req d5.jar GET /api/characters/$KUBIRIK/inventory)
-check_has "duplicitní vložení navýší množství (1+2=3)" "$Q" '"qty":3'
-req d5.jar PUT /api/inventory/$IID '{"qty":0}' > /dev/null
-Q2=$(req d5.jar GET /api/characters/$KUBIRIK/inventory)
-check_not "qty 0 položku odstraní" "$Q2" "Plamenný meč"
+X=$(req p5.jar GET /api/inv/char/$KUBIRIK)
+check_has "cizí hráč inventář nevidí" "$X" "nenalezena"
+VA=$(req d5.jar GET "/api/inv/char/$KUBIRIK?viewAs=$PAULI_UID")
+check_has "view-as: DM jako Paulí inventář Kubirika nevidí" "$VA" "nenalezena"
+check_not "obsah skrytého článku předmětu neunikl do inventáře" "$INV" "prokletý"
 
 echo "== změna vlastníka postavy =="
 X=$(req k5.jar PUT /api/characters/$KUBIRIK "{\"userId\":$PAULI_UID}")

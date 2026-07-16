@@ -32,8 +32,9 @@ let db = {
   images: [],       // {id, campaignId, filename, originalName, mime}
   notes: [],        // {id, articleId, authorId, text, visibleTo:[characterId], approved, createdAt}
   characters: [],   // {id, campaignId, userId, name, articleId} — hráč může mít více postav
-  inventory: [],    // {id, characterId, itemArticleId, qty} — předměty v inventáři postavy
-  invNotes: [],     // {id, invId, authorId, visibility:'dm'|'dm_owner', text, createdAt}
+  itemInstances: [],// {id, campaignId, articleId, qty, hp, hpMax, identified, rot, loc{t,…}}
+  invZones: [],     // {id, campaignId, name} — zóny podlahy (sdílené odkládání)
+  invLog: [],       // {id, campaignId, ts, who, text} — deník přesunů
   sessions: [],     // {id, campaignId, title, date, players:[userId], scenario:{left,right}, reportArticleId, entries:[{userId,html,text,visibility,visibleTo,updatedAt}]}
   templates: [],    // {id, campaignId, name, type, content} — šablony obsahových bloků
   chatRooms: [],    // {id, campaignId, name, sessionIds:[], characters:[charId], createdAt}
@@ -49,7 +50,7 @@ const BACKUP_FORMATS_IN = ['loreki-backup', 'loremaster-backup'];
 const SYSTEM_CATEGORIES = ['Kampaň', 'Předměty', 'Hráčské postavy', 'Jazyk', 'NPC', 'Monstra']; // nelze odebrat (mají vlastní formuláře a funkce)
 // Položky navigace, jejichž pořadí si DM může přerovnat (klíče musí znát i frontend).
 // Správa hráčů a Kategorie v menu nejsou — jsou to záložky uvnitř Nastavení kampaně.
-const NAV_KEYS = ['campaigns', 'home', 'articles', 'sessions', 'settings'];
+const NAV_KEYS = ['campaigns', 'home', 'articles', 'sessions', 'inventory', 'settings'];
 /** Uložené pořadí doplněné o případné nové/chybějící položky — nikdy nevrátí neúplný seznam. */
 function navOrderOf(c) {
   const saved = Array.isArray(c && c.navOrder) ? c.navOrder.filter(k => NAV_KEYS.includes(k)) : [];
@@ -81,8 +82,10 @@ const MASTER_PASSWORD = (() => {
 if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 db.settings = db.settings || { appName: APP_NAME_DEFAULT }; // nastavení aplikace
 db.notes = db.notes || []; // migrace starších dat
-db.inventory = db.inventory || [];
-db.invNotes = db.invNotes || [];
+db.itemInstances = db.itemInstances || []; // grafický inventář: konkrétní kusy
+db.invZones = db.invZones || [];           // zóny podlahy
+db.invLog = db.invLog || [];               // deník přesunů
+delete db.inventory; delete db.invNotes;   // starý seznamový inventář zrušen
 db.sessions = db.sessions || [];
 db.templates = db.templates || [];
 db.chatRooms = db.chatRooms || [];
@@ -737,7 +740,6 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   if (!camp) return sendJSON(res, 404, { error: 'Kampaň nenalezena.' });
   const artIds = new Set(db.articles.filter(a => a.campaignId === cid).map(a => a.id));
   const charIds = new Set(db.characters.filter(c => c.campaignId === cid).map(c => c.id));
-  const invIds = new Set(db.inventory.filter(e => charIds.has(e.characterId)).map(e => e.id));
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   const backup = {
     format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(),
@@ -748,8 +750,8 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
     articles: db.articles.filter(a => a.campaignId === cid),
     blocks: db.blocks.filter(b => artIds.has(b.articleId)),
     characters: db.characters.filter(c => c.campaignId === cid),
-    inventory: db.inventory.filter(e => charIds.has(e.characterId)),
-    invNotes: db.invNotes.filter(n => invIds.has(n.invId)),
+    itemInstances: db.itemInstances.filter(i => i.campaignId === cid),
+    invZones: db.invZones.filter(z => z.campaignId === cid),
     notes: db.notes.filter(n => artIds.has(n.articleId)),
     sessions: db.sessions.filter(s => s.campaignId === cid),
     templates: db.templates.filter(t => t.campaignId === cid),
@@ -828,8 +830,14 @@ route('POST', '/api/admin/import', async (req, res) => {
     if (!getMembership(camp.id, uid)) db.memberships.push({ campaignId: camp.id, userId: uid, role: m.role, characterName: m.characterName, defaultCharId: m.defaultCharId ? remap(m.defaultCharId) : null });
   });
   // inventář, poznámky, sezení, šablony, chat
-  (backup.inventory || []).forEach(e => db.inventory.push({ ...e, id: remap(e.id), characterId: remap(e.characterId), itemArticleId: remap(e.itemArticleId) }));
-  (backup.invNotes || []).forEach(n => db.invNotes.push({ ...n, id: remap(n.id), invId: remap(n.invId), authorId: mu(n.authorId) }));
+  (backup.itemInstances || []).forEach(i => {
+    const l = i.loc || {};
+    const nl = l.t === 'slot' ? { t: 'slot', charId: remap(l.charId), slot: l.slot }
+      : l.t === 'grid' ? { t: 'grid', cId: remap(l.cId), x: l.x, y: l.y }
+        : { t: 'zone', zId: remap(l.zId) };
+    db.itemInstances.push({ ...i, id: remap(i.id), campaignId: camp.id, articleId: remap(i.articleId), loc: nl });
+  });
+  (backup.invZones || []).forEach(z => db.invZones.push({ ...z, id: remap(z.id), campaignId: camp.id }));
   (backup.notes || []).forEach(n => db.notes.push({ ...n, id: remap(n.id), articleId: remap(n.articleId), authorId: mu(n.authorId), authorCharId: n.authorCharId ? remap(n.authorCharId) : null, visibleTo: (n.visibleTo || []).map(remap) }));
   (backup.sessions || []).forEach(s => {
     db.sessions.push({
@@ -852,15 +860,15 @@ route('DELETE', '/api/admin/campaigns/:cid', async (req, res, params) => {
   if (!db.campaigns.some(c => c.id === cid)) return sendJSON(res, 404, { error: 'Kampaň nenalezena.' });
   const artIds = new Set(db.articles.filter(a => a.campaignId === cid).map(a => a.id));
   const charIds = new Set(db.characters.filter(c => c.campaignId === cid).map(c => c.id));
-  const invIds = new Set(db.inventory.filter(e => charIds.has(e.characterId)).map(e => e.id));
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   db.images.filter(i => i.campaignId === cid).forEach(i => { try { fs.unlinkSync(path.join(UPLOAD_DIR, i.filename)); } catch { } });
   db.images = db.images.filter(i => i.campaignId !== cid);
   db.blocks = db.blocks.filter(b => !artIds.has(b.articleId));
   db.notes = db.notes.filter(n => !artIds.has(n.articleId));
   db.articles = db.articles.filter(a => a.campaignId !== cid);
-  db.invNotes = db.invNotes.filter(n => !invIds.has(n.invId));
-  db.inventory = db.inventory.filter(e => !charIds.has(e.characterId));
+  db.itemInstances = db.itemInstances.filter(i => i.campaignId !== cid);
+  db.invZones = db.invZones.filter(z => z.campaignId !== cid);
+  db.invLog = db.invLog.filter(l => l.campaignId !== cid);
   db.characters = db.characters.filter(c => c.campaignId !== cid);
   db.sessions = db.sessions.filter(s => s.campaignId !== cid);
   db.templates = db.templates.filter(t => t.campaignId !== cid);
@@ -1144,6 +1152,12 @@ route('DELETE', '/api/characters/:id', async (req, res, params, userId, query) =
   if (!ch) return sendJSON(res, 404, { error: 'Postava nenalezena.' });
   const viewer = userId && resolveViewer(userId, ch.campaignId, query.viewAs);
   if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Pouze DM.' });
+  // inventář postavy: předměty na těle (a v nasazených kontejnerech) se smažou s ní
+  const onChar = db.itemInstances.filter(i => { const r = rootLoc(i); return r.t === 'slot' && r.charId === ch.id; }).map(i => i.id);
+  if (onChar.length) {
+    db.itemInstances = db.itemInstances.filter(i => !onChar.includes(i.id));
+    invLogAdd(ch.campaignId, viewer, `smazal postavu ${ch.name} včetně ${onChar.length} předmětů`);
+  }
   db.characters = db.characters.filter(c => c.id !== ch.id);
   // odkazy na postavu ve viditelnosti se uklidí
   db.blocks.forEach(b => { if (Array.isArray(b.visibleTo)) b.visibleTo = b.visibleTo.filter(id => id !== ch.id); });
@@ -1359,7 +1373,8 @@ route('GET', '/api/articles/:id', async (req, res, params, userId, query) => {
     coverWidth: a.coverWidth || 100,
     sessionId: a.sessionId || null,
     backlinks: backlinksFor(a, viewer),
-    item: a.item || null, // metadata předmětu (váha/cena/vzácnost)
+    // metadata předmětu — tajný popis dostane jen DM (hráč až přes identifikovanou instanci)
+    item: a.item ? (viewer.isDM ? a.item : { ...a.item, secretText: undefined }) : null,
     charMeta: a.charMeta || null, // metadata hráčské postavy (rasa/třída/úroveň…)
     isHome: !!a.isHome, // domovský článek kampaně — nelze smazat
     character: linkedChar ? { id: linkedChar.id, name: linkedChar.name, userId: linkedChar.userId } : null,
@@ -1424,11 +1439,36 @@ route('PUT', '/api/articles/:id', async (req, res, params, userId, query) => {
   a.coverImageId = body.coverImageId || null;
   a.coverThumbId = body.coverThumbId || null; // čtvercový ořez pro seznam
   a.coverWidth = [25, 50, 75, 100].includes(body.coverWidth) ? body.coverWidth : (a.coverWidth || 100);
-  if (body.item && typeof body.item === 'object') { // metadata předmětu
+  if (body.item && typeof body.item === 'object') { // metadata předmětu (vč. grafického inventáře)
+    const it = body.item;
+    const cl = (v, lo, hi, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.max(lo, Math.min(hi, n)); };
+    let container = null; // mřížka kontejneru: buňky s barvou zóny (g/y/r)
+    if (it.container && Array.isArray(it.container.cells)) {
+      const seen = new Set(); const cells = [];
+      for (const c of it.container.cells.slice(0, 144)) {
+        const x = cl(c.x, 0, 11, -1), y = cl(c.y, 0, 11, -1);
+        if (x < 0 || y < 0) continue;
+        const k = x + ',' + y; if (seen.has(k)) continue; seen.add(k);
+        cells.push({ x, y, c: ['g', 'y', 'r'].includes(c.c) ? c.c : 'g' });
+      }
+      if (cells.length) container = { cells };
+    }
     a.item = {
-      weight: Math.max(0, parseFloat(body.item.weight) || 0),
-      price: String(body.item.price || '').slice(0, 40),
-      rarity: String(body.item.rarity || '').slice(0, 40)
+      weight: Math.max(0, parseFloat(it.weight) || 0),
+      price: String(it.price || '').slice(0, 40),
+      rarity: String(it.rarity || '').slice(0, 40),
+      tokenImageId: parseInt(it.tokenImageId, 10) || null,
+      w: cl(it.w, 1, 6, 1), h: cl(it.h, 1, 6, 1),
+      wearable: !!it.wearable, twoHanded: !!it.twoHanded,
+      stackable: !!it.stackable, stackMax: cl(it.stackMax, 1, 99, 10),
+      noDrop: !!it.noDrop,
+      hpMax: cl(it.hpMax, 1, 10, 10),
+      identifiedDefault: !!it.identifiedDefault,
+      unidentifiedName: String(it.unidentifiedName || '').slice(0, 80),
+      publicText: String(it.publicText || '').slice(0, 1000),
+      secretText: String(it.secretText || '').slice(0, 2000),
+      bodySize: cl(it.bodySize, 1, 4, 4),
+      container
     };
   }
   if (body.charMeta && typeof body.charMeta === 'object') { // metadata hráčské postavy (rasa, třída…)
@@ -1475,6 +1515,11 @@ route('DELETE', '/api/articles/:id', async (req, res, params, userId, query) => 
   const viewer = userId && resolveViewer(userId, a.campaignId, query.viewAs);
   if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Pouze DM.' });
   if (a.isHome) return sendJSON(res, 400, { error: 'Domovský článek kampaně nelze smazat — lze ho jen upravit.' });
+  // instance předmětu mizí se svým článkem; obsah mazaných kontejnerů také
+  // (kontejnery se nevnořují, takže stačí jedna úroveň)
+  const gone = db.itemInstances.filter(i => i.articleId === a.id).map(i => i.id);
+  if (gone.length) db.itemInstances = db.itemInstances.filter(i =>
+    !gone.includes(i.id) && !(i.loc && i.loc.t === 'grid' && gone.includes(i.loc.cId)));
   db.articles = db.articles.filter(x => x.id !== a.id);
   db.blocks = db.blocks.filter(b => b.articleId !== a.id);
   save();
@@ -1594,143 +1639,355 @@ route('DELETE', '/api/notes/:id', async (req, res, params, userId, query) => {
  * Inventář vidí jen DM a vlastník postavy.
  * Poznámky u předmětu: 'dm' = jen DM (+ autor), 'dm_owner' = DM + vlastník postavy.
  */
-function invNoteVisible(n, viewer, ch) {
+// ================================================================ GRAFICKÝ INVENTÁŘ
+// Instance předmětu = konkrétní kus (vlastní životy, identifikace, pozice).
+// Umístění (loc): {t:'slot',charId,slot} na těle | {t:'grid',cId,x,y} v kontejneru | {t:'zone',zId} na podlaze.
+// Práva: DM vše; hráč jen předměty, jejichž kořen (po vynoření z kontejnerů) je jeho postava nebo zóna.
+
+// Sloty na těle: kapacita v políčkách. Na těle se tvar tokenu neřeší — slot je „zásuvka“
+// s limitem políček (dohodnuto: štít 2×2 se do ruky vejde, rozhoduje počet políček).
+const BODY_SLOTS = {
+  head: 1, neck: 1, torso: 4, cloak: 2, belt: 3,
+  handR: 4, handL: 4, gloves: 1, wristR: 1, wristL: 1, forearm: 1,
+  ring1: 1, ring2: 1, ring3: 1, ring4: 1, pants: 2, boots: 1, back: 4
+};
+const HANDS = ['handR', 'handL'];
+
+function itemMeta(art) { return (art && art.item) || {}; }
+function instArticle(inst) { return db.articles.find(a => a.id === inst.articleId); }
+function instShape(inst) {
+  const m = itemMeta(instArticle(inst));
+  const w = Math.max(1, parseInt(m.w, 10) || 1), h = Math.max(1, parseInt(m.h, 10) || 1);
+  return inst.rot ? { w: h, h: w } : { w, h };
+}
+/** Kolik políček předmět zabírá na TĚLE (kontejner může mít vlastní údaj „bodySize“). */
+function instBodyCells(inst) {
+  const m = itemMeta(instArticle(inst));
+  if (m.container && m.bodySize) return Math.max(1, parseInt(m.bodySize, 10) || 1);
+  return Math.max(1, (parseInt(m.w, 10) || 1) * (parseInt(m.h, 10) || 1));
+}
+/** Kořenové umístění — vynoří se z kontejneru na tělo/zónu. */
+function rootLoc(inst) {
+  let cur = inst.loc, guard = 0;
+  while (cur && cur.t === 'grid' && guard++ < 12) {
+    const cont = db.itemInstances.find(i => i.id === cur.cId);
+    if (!cont) break;
+    cur = cont.loc;
+  }
+  return cur || { t: 'zone', zId: 0 };
+}
+/** Smí aktér s předmětem hýbat / číst jeho detail? Fail closed. */
+function canTouchInst(inst, viewer) {
   if (viewer.isDM) return true;
-  if (n.authorId === viewer.userId) return true; // autor svou poznámku vidí vždy
-  // "DM + hráč" vidí jen AKTIVNÍ postava, které inventář patří
-  return n.visibility === 'dm_owner' && userCharIds(ch.campaignId, viewer.userId).includes(ch.id);
+  const root = rootLoc(inst);
+  if (root.t === 'zone') return true; // podlaha je společná pro celou kampaň
+  if (root.t === 'slot') {
+    const ch = db.characters.find(c => c.id === root.charId);
+    return !!ch && ch.userId === viewer.userId;
+  }
+  return false;
 }
-function invNoteOut(n, campaignId, sessionUserId) {
-  return {
-    id: n.id, text: n.text, visibility: n.visibility, createdAt: n.createdAt,
-    author: memberDisplayName(campaignId, n.authorId) + (getMembership(campaignId, n.authorId)?.role === 'dm' ? ' (DM)' : ''),
-    mine: n.authorId === sessionUserId
+/** Pohled na instanci pro diváka — neidentifikovaný kus neprozradí pravé jméno ani tajný popis. */
+function instView(inst, viewer) {
+  const art = instArticle(inst) || { title: '???', id: 0 };
+  const m = itemMeta(art);
+  const full = viewer.isDM || !!inst.identified;
+  const o = {
+    id: inst.id, qty: inst.qty || 1, hp: inst.hp, hpMax: inst.hpMax,
+    broken: inst.hp === 0, identified: !!inst.identified, rot: inst.rot ? 1 : 0, loc: inst.loc,
+    w: Math.max(1, parseInt(m.w, 10) || 1), h: Math.max(1, parseInt(m.h, 10) || 1),
+    tokenImageId: m.tokenImageId || null,
+    wearable: !!m.wearable, twoHanded: !!m.twoHanded, stackable: !!m.stackable,
+    noDrop: !!m.noDrop, bodyCells: instBodyCells(inst),
+    container: m.container ? { cells: m.container.cells } : null,
+    publicText: String(m.publicText || ''),
+    name: full ? art.title : (m.unidentifiedName || 'Neznámý předmět')
   };
+  if (full) {
+    o.secretText = String(m.secretText || '');
+    if (viewer.isDM || articleVisibleToPlayer(art.id, viewer.userId)) o.articleId = art.id;
+  }
+  return o;
+}
+/** Zápis do deníku přesunů (drží se posledních 300 na kampaň). */
+function invLogAdd(cid, viewer, text) {
+  const chId = chatActiveChar(viewer, cid);
+  const ch = chId && db.characters.find(c => c.id === chId);
+  const u = db.users.find(x => x.id === viewer.userId);
+  const who = ch ? ch.name : (viewer.isDM ? 'DM' : (u ? u.username : '?'));
+  db.invLog.push({ id: nextId(), campaignId: cid, ts: new Date().toISOString(), who, text: String(text).slice(0, 300) });
+  const mine = db.invLog.filter(l => l.campaignId === cid);
+  if (mine.length > 300) {
+    const cut = new Set(mine.slice(0, mine.length - 300).map(l => l.id));
+    db.invLog = db.invLog.filter(l => !cut.has(l.id));
+  }
+}
+/** Jméno instance pro deník — neidentifikovaný kus neprozradí pravé jméno ani tady. */
+function instLogName(inst) {
+  const art = instArticle(inst); const m = itemMeta(art);
+  return inst.identified ? (art ? art.title : '?') : (m.unidentifiedName || 'Neznámý předmět');
 }
 
-route('GET', '/api/characters/:chId/inventory', async (req, res, params, userId, query) => {
+/** Ověření umístění. Vrací text chyby, nebo null když je platné. */
+function placeError(inst, to, rot, viewer) {
+  const m = itemMeta(instArticle(inst));
+  if (!to || typeof to !== 'object') return 'Neplatný cíl.';
+  if (to.t === 'slot') {
+    if (!BODY_SLOTS[to.slot]) return 'Neznámý slot.';
+    const ch = db.characters.find(c => c.id === to.charId);
+    if (!ch || ch.campaignId !== inst.campaignId) return 'Postava nenalezena.';
+    if (!viewer.isDM && ch.userId !== viewer.userId) return 'Cizí postava.';
+    if (!m.wearable) return 'Předmět není nositelný — patří do batohu nebo kapsy.';
+    if (instBodyCells(inst) > BODY_SLOTS[to.slot]) return 'Do tohoto slotu se předmět nevejde.';
+    const taken = db.itemInstances.find(i => i.id !== inst.id && i.loc && i.loc.t === 'slot' && i.loc.charId === ch.id && i.loc.slot === to.slot);
+    if (taken) return 'Slot je obsazený.';
+    const other = HANDS.find(h => h !== to.slot);
+    if (m.twoHanded) {
+      if (!HANDS.includes(to.slot)) return 'Obouruční předmět patří do ruky.';
+      const inOther = db.itemInstances.find(i => i.id !== inst.id && i.loc && i.loc.t === 'slot' && i.loc.charId === ch.id && i.loc.slot === other);
+      if (inOther) return 'Obouruční předmět potřebuje obě ruce volné.';
+    } else if (HANDS.includes(to.slot)) {
+      const inOther = db.itemInstances.find(i => i.id !== inst.id && i.loc && i.loc.t === 'slot' && i.loc.charId === ch.id && i.loc.slot === other);
+      if (inOther && itemMeta(instArticle(inOther)).twoHanded) return 'Druhá ruka drží obouruční předmět.';
+    }
+    return null;
+  }
+  if (to.t === 'grid') {
+    const cont = db.itemInstances.find(i => i.id === to.cId);
+    if (!cont || cont.campaignId !== inst.campaignId) return 'Kontejner nenalezen.';
+    const cm = itemMeta(instArticle(cont));
+    if (!cm.container) return 'Cíl není kontejner.';
+    if (m.container) return 'Kontejnery nejdou vkládat do sebe.';
+    if (cont.id === inst.id) return 'Předmět nejde vložit sám do sebe.';
+    if (!canTouchInst(cont, viewer)) return 'K tomuto kontejneru nemáte přístup.';
+    const cells = new Set((cm.container.cells || []).map(c => c.x + ',' + c.y));
+    const w = rot ? (parseInt(m.h, 10) || 1) : (parseInt(m.w, 10) || 1);
+    const h = rot ? (parseInt(m.w, 10) || 1) : (parseInt(m.h, 10) || 1);
+    const x = parseInt(to.x, 10), y = parseInt(to.y, 10);
+    if (isNaN(x) || isNaN(y)) return 'Neplatná pozice.';
+    for (let dx = 0; dx < w; dx++) for (let dy = 0; dy < h; dy++)
+      if (!cells.has((x + dx) + ',' + (y + dy))) return 'Předmět se sem nevejde.';
+    for (const oth of db.itemInstances.filter(i => i.id !== inst.id && i.loc && i.loc.t === 'grid' && i.loc.cId === cont.id)) {
+      const os = instShape(oth);
+      if (x < oth.loc.x + os.w && oth.loc.x < x + w && y < oth.loc.y + os.h && oth.loc.y < y + h)
+        return 'Místo je obsazené.';
+    }
+    return null;
+  }
+  if (to.t === 'zone') {
+    const z = db.invZones.find(z => z.id === to.zId);
+    if (!z || z.campaignId !== inst.campaignId) return 'Zóna nenalezena.';
+    if (!viewer.isDM && m.noDrop) return 'Tento předmět nejde odložit.';
+    return null;
+  }
+  return 'Neplatný cíl.';
+}
+function normLoc(to) {
+  if (!to || typeof to !== 'object') return null;
+  if (to.t === 'slot') return { t: 'slot', charId: parseInt(to.charId, 10), slot: String(to.slot || '') };
+  if (to.t === 'grid') return { t: 'grid', cId: parseInt(to.cId, 10), x: parseInt(to.x, 10) || 0, y: parseInt(to.y, 10) || 0 };
+  if (to.t === 'zone') return { t: 'zone', zId: parseInt(to.zId, 10) };
+  return null;
+}
+
+// ---------- postavy, jejichž inventář smím otevřít
+route('GET', '/api/campaigns/:cid/inv/chars', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
+  const chars = db.characters.filter(c => c.campaignId === cid && (viewer.isDM || c.userId === viewer.userId));
+  sendJSON(res, 200, chars.map(c => ({ id: c.id, name: c.name })));
+});
+
+// ---------- inventář postavy (tělo + obsah nasazených kontejnerů)
+route('GET', '/api/inv/char/:chId', async (req, res, params, userId, query) => {
   const ch = db.characters.find(c => c.id === parseInt(params.chId, 10));
   if (!ch) return sendJSON(res, 404, { error: 'Postava nenalezena.' });
   const viewer = userId && resolveViewer(userId, ch.campaignId, query.viewAs);
   if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
-  if (!viewer.isDM && !userCharIds(ch.campaignId, viewer.userId).includes(ch.id)) {
-    return sendJSON(res, 403, { error: 'Inventář vidí jen daná postava a DM — přepněte se na ni.' });
-  }
-  const entries = db.inventory.filter(e => e.characterId === ch.id).map(e => {
-    const art = db.articles.find(a => a.id === e.itemArticleId);
-    const meta = (art && art.item) || {};
-    return {
-      id: e.id, qty: e.qty,
-      item: art ? {
-        articleId: art.id, title: art.title, description: art.description,
-        thumbId: art.coverThumbId || art.coverImageId || thumbFor(art, viewer),
-        weight: meta.weight || 0, price: meta.price || '', rarity: meta.rarity || '',
-        linkable: viewer.isDM || articleVisibleToPlayer(art.id, viewer.userId)
-      } : null,
-      notes: db.invNotes.filter(n => n.invId === e.id && invNoteVisible(n, viewer, ch))
-        .map(n => invNoteOut(n, ch.campaignId, viewer.userId))
-    };
+  if (!viewer.isDM && ch.userId !== viewer.userId) return sendJSON(res, 404, { error: 'Postava nenalezena.' }); // neprozradit ani existenci
+  const items = db.itemInstances.filter(i => {
+    if (i.campaignId !== ch.campaignId) return false;
+    const r = rootLoc(i);
+    return r.t === 'slot' && r.charId === ch.id;
   });
-  sendJSON(res, 200, { characterId: ch.id, characterName: ch.name, entries });
+  sendJSON(res, 200, { characterId: ch.id, characterName: ch.name, slots: BODY_SLOTS, items: items.map(i => instView(i, viewer)) });
 });
 
-route('POST', '/api/characters/:chId/inventory', async (req, res, params, userId, query) => {
-  const ch = db.characters.find(c => c.id === parseInt(params.chId, 10));
-  if (!ch) return sendJSON(res, 404, { error: 'Postava nenalezena.' });
-  const viewer = userId && resolveViewer(userId, ch.campaignId, query.viewAs);
-  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Předměty do inventáře vkládá DM.' });
-  const { itemArticleId, qty } = await readJSONBody(req);
-  const art = db.articles.find(a => a.id === parseInt(itemArticleId, 10));
-  if (!art || art.campaignId !== ch.campaignId) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
-  if (art.category !== 'Předměty') return sendJSON(res, 400, { error: 'Článek musí mít kategorii „Předměty“.' });
-  // stejný předmět → jen navýšit množství
-  const existing = db.inventory.find(e => e.characterId === ch.id && e.itemArticleId === art.id);
-  if (existing) { existing.qty += Math.max(1, parseInt(qty, 10) || 1); save(); return sendJSON(res, 200, { id: existing.id }); }
-  const entry = { id: nextId(), characterId: ch.id, itemArticleId: art.id, qty: Math.max(1, parseInt(qty, 10) || 1) };
-  db.inventory.push(entry); save();
-  sendJSON(res, 200, { id: entry.id });
-});
-
-route('PUT', '/api/inventory/:id', async (req, res, params, userId, query) => {
-  const e = db.inventory.find(x => x.id === parseInt(params.id, 10));
-  if (!e) return sendJSON(res, 404, { error: 'Položka nenalezena.' });
-  const ch = db.characters.find(c => c.id === e.characterId);
-  const viewer = userId && resolveViewer(userId, ch.campaignId, query.viewAs);
-  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Množství mění DM.' });
-  const { qty } = await readJSONBody(req);
-  e.qty = Math.max(0, parseInt(qty, 10) || 0);
-  if (e.qty === 0) {
-    db.inventory = db.inventory.filter(x => x.id !== e.id);
-    db.invNotes = db.invNotes.filter(n => n.invId !== e.id);
-  }
-  save();
-  sendJSON(res, 200, { ok: true, qty: e.qty });
-});
-
-route('DELETE', '/api/inventory/:id', async (req, res, params, userId, query) => {
-  const e = db.inventory.find(x => x.id === parseInt(params.id, 10));
-  if (!e) return sendJSON(res, 404, { error: 'Položka nenalezena.' });
-  const ch = db.characters.find(c => c.id === e.characterId);
-  const viewer = userId && resolveViewer(userId, ch.campaignId, query.viewAs);
-  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Pouze DM.' });
-  db.inventory = db.inventory.filter(x => x.id !== e.id);
-  db.invNotes = db.invNotes.filter(n => n.invId !== e.id);
-  save();
-  sendJSON(res, 200, { ok: true });
-});
-
-// poznámku k předmětu v inventáři píše DM nebo vlastník postavy
-route('POST', '/api/inventory/:id/notes', async (req, res, params, userId, query) => {
-  const e = db.inventory.find(x => x.id === parseInt(params.id, 10));
-  if (!e) return sendJSON(res, 404, { error: 'Položka nenalezena.' });
-  const ch = db.characters.find(c => c.id === e.characterId);
-  const viewer = userId && resolveViewer(userId, ch.campaignId, query.viewAs);
-  if (!viewer || (!viewer.isDM && !userCharIds(ch.campaignId, viewer.userId).includes(ch.id))) {
-    return sendJSON(res, 403, { error: 'Poznámky píše DM nebo daná postava.' });
-  }
-  const { text, visibility } = await readJSONBody(req);
-  if (!text || !String(text).trim()) return sendJSON(res, 400, { error: 'Poznámka je prázdná.' });
-  const n = {
-    id: nextId(), invId: e.id, authorId: viewer.userId, // emulace při „zobrazit jako“
-    visibility: visibility === 'dm' ? 'dm' : 'dm_owner', // 'dm' = jen DM, jinak DM + hráč
-    text: String(text).slice(0, 2000), createdAt: new Date().toISOString()
-  };
-  db.invNotes.push(n); save();
-  sendJSON(res, 200, { id: n.id });
-});
-
-route('DELETE', '/api/invnotes/:id', async (req, res, params, userId, query) => {
-  const n = db.invNotes.find(x => x.id === parseInt(params.id, 10));
-  if (!n) return sendJSON(res, 404, { error: 'Poznámka nenalezena.' });
-  const e = db.inventory.find(x => x.id === n.invId);
-  const ch = e && db.characters.find(c => c.id === e.characterId);
-  const m = ch && userId && getMembership(ch.campaignId, userId);
-  if (!m || (n.authorId !== userId && m.role !== 'dm')) return sendJSON(res, 403, { error: 'Nemáte oprávnění.' });
-  db.invNotes = db.invNotes.filter(x => x.id !== n.id); save();
-  sendJSON(res, 200, { ok: true });
-});
-
-/**
- * Poznámky z inventářů zobrazené na článku PŘEDMĚTU — dle oprávnění:
- * DM vidí všechny výskyty předmětu; hráč jen výskyty u svých postav
- * a z nich poznámky, které smí vidět.
- */
-route('GET', '/api/articles/:id/inventory-notes', async (req, res, params, userId, query) => {
-  const a = db.articles.find(a => a.id === parseInt(params.id, 10));
-  if (!a) return sendJSON(res, 404, { error: 'Článek nenalezen.' });
-  const viewer = userId && resolveViewer(userId, a.campaignId, query.viewAs);
+// ---------- zóny podlahy
+route('GET', '/api/campaigns/:cid/inv/zones', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
   if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
-  if (!viewer.isDM && !articleVisibleToPlayer(a.id, viewer.userId)) return sendJSON(res, 404, { error: 'Článek nenalezen.' });
-  const out = [];
-  for (const e of db.inventory.filter(e => e.itemArticleId === a.id)) {
-    const ch = db.characters.find(c => c.id === e.characterId);
-    if (!ch) continue;
-    if (!viewer.isDM && !userCharIds(a.campaignId, viewer.userId).includes(ch.id)) continue; // jen aktivní postava
-    const notes = db.invNotes.filter(n => n.invId === e.id && invNoteVisible(n, viewer, ch))
-      .map(n => invNoteOut(n, ch.campaignId, viewer.userId));
-    out.push({ characterName: ch.name, qty: e.qty, notes });
+  const zones = db.invZones.filter(z => z.campaignId === cid).map(z => ({
+    id: z.id, name: z.name,
+    count: db.itemInstances.filter(i => i.loc && i.loc.t === 'zone' && i.loc.zId === z.id).length
+  }));
+  sendJSON(res, 200, zones);
+});
+route('POST', '/api/campaigns/:cid/inv/zones', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Zóny spravuje DM.' });
+  const { name } = await readJSONBody(req);
+  if (!name || !String(name).trim()) return sendJSON(res, 400, { error: 'Zadejte název zóny.' });
+  const z = { id: nextId(), campaignId: cid, name: String(name).trim().slice(0, 60), createdAt: new Date().toISOString() };
+  db.invZones.push(z); save(); sseBroadcast(cid, { inv: 1 });
+  sendJSON(res, 200, { id: z.id });
+});
+route('DELETE', '/api/inv/zones/:id', async (req, res, params, userId, query) => {
+  const z = db.invZones.find(z => z.id === parseInt(params.id, 10));
+  if (!z) return sendJSON(res, 404, { error: 'Zóna nenalezena.' });
+  const viewer = userId && resolveViewer(userId, z.campaignId, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Zóny spravuje DM.' });
+  if (db.itemInstances.some(i => i.loc && i.loc.t === 'zone' && i.loc.zId === z.id))
+    return sendJSON(res, 400, { error: 'Zóna není prázdná — nejdřív předměty přesuňte nebo smažte.' });
+  db.invZones = db.invZones.filter(x => x.id !== z.id); save(); sseBroadcast(z.campaignId, { inv: 1 });
+  sendJSON(res, 200, { ok: true });
+});
+route('GET', '/api/inv/zones/:id/items', async (req, res, params, userId, query) => {
+  const z = db.invZones.find(z => z.id === parseInt(params.id, 10));
+  if (!z) return sendJSON(res, 404, { error: 'Zóna nenalezena.' });
+  const viewer = userId && resolveViewer(userId, z.campaignId, query.viewAs);
+  if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
+  const items = db.itemInstances.filter(i => i.loc && i.loc.t === 'zone' && i.loc.zId === z.id);
+  sendJSON(res, 200, items.map(i => instView(i, viewer)));
+});
+
+// ---------- vytvoření instance (DM)
+route('POST', '/api/campaigns/:cid/inv/instances', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Předměty vytváří DM.' });
+  const body = await readJSONBody(req);
+  const art = db.articles.find(a => a.id === parseInt(body.articleId, 10));
+  if (!art || art.campaignId !== cid) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  if (art.category !== 'Předměty') return sendJSON(res, 400, { error: 'Článek musí mít kategorii „Předměty“.' });
+  const m = itemMeta(art);
+  const hpMax = Math.max(1, Math.min(10, parseInt(body.hpMax, 10) || m.hpMax || 10));
+  const inst = {
+    id: nextId(), campaignId: cid, articleId: art.id,
+    qty: m.stackable ? Math.max(1, Math.min(m.stackMax || 10, parseInt(body.qty, 10) || 1)) : 1,
+    hp: Math.max(0, Math.min(hpMax, body.hp === undefined ? hpMax : parseInt(body.hp, 10) || 0)),
+    hpMax,
+    identified: body.identified === undefined ? !!m.identifiedDefault : !!body.identified,
+    rot: 0, loc: null, createdAt: new Date().toISOString()
+  };
+  const to = normLoc(body.to);
+  const err = to && placeError(inst, to, 0, viewer);
+  if (!to || err) return sendJSON(res, 400, { error: err || 'Neplatný cíl.' });
+  inst.loc = to;
+  db.itemInstances.push(inst);
+  invLogAdd(cid, viewer, `vytvořil ${instLogName(inst)}${inst.qty > 1 ? ' ×' + inst.qty : ''}`);
+  save(); sseBroadcast(cid, { inv: 1 });
+  sendJSON(res, 200, { id: inst.id });
+});
+
+// ---------- přesun / otočení / sloučení stacku
+route('PUT', '/api/inv/instances/:id/move', async (req, res, params, userId, query) => {
+  const inst = db.itemInstances.find(i => i.id === parseInt(params.id, 10));
+  if (!inst) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  const viewer = userId && resolveViewer(userId, inst.campaignId, query.viewAs);
+  if (!viewer || !canTouchInst(inst, viewer)) return sendJSON(res, 404, { error: 'Předmět nenalezen.' }); // fail closed
+  const body = await readJSONBody(req);
+  const wasRoot = rootLoc(inst);
+
+  // sloučení stacků: cílem je konkrétní instance téhož článku
+  if (body.mergeInto) {
+    const target = db.itemInstances.find(i => i.id === parseInt(body.mergeInto, 10));
+    if (!target || target.campaignId !== inst.campaignId || target.id === inst.id) return sendJSON(res, 404, { error: 'Cíl nenalezen.' });
+    if (!canTouchInst(target, viewer)) return sendJSON(res, 403, { error: 'K cíli nemáte přístup.' });
+    const m = itemMeta(instArticle(inst));
+    if (!m.stackable || target.articleId !== inst.articleId) return sendJSON(res, 400, { error: 'Tyto předměty nejde sloučit.' });
+    const max = m.stackMax || 10;
+    if (target.qty + inst.qty > max) return sendJSON(res, 400, { error: `Stack pojme nejvýše ${max} ks.` });
+    target.qty += inst.qty;
+    db.itemInstances = db.itemInstances.filter(i => i.id !== inst.id);
+    save(); sseBroadcast(inst.campaignId, { inv: 1 });
+    return sendJSON(res, 200, { ok: true, merged: true });
   }
-  sendJSON(res, 200, out);
+
+  const to = normLoc(body.to);
+  const rot = to && to.t === 'grid' ? (body.rot ? 1 : 0) : 0;
+  const err = to && placeError(inst, to, rot, viewer);
+  if (!to || err) return sendJSON(res, 400, { error: err || 'Neplatný cíl.' });
+  inst.loc = to; inst.rot = rot;
+  const nowRoot = rootLoc(inst);
+  if (wasRoot.t !== 'zone' && nowRoot.t === 'zone') invLogAdd(inst.campaignId, viewer, `odložil ${instLogName(inst)}${inst.qty > 1 ? ' ×' + inst.qty : ''} na zem`);
+  if (wasRoot.t === 'zone' && nowRoot.t === 'slot') invLogAdd(inst.campaignId, viewer, `vzal ze země ${instLogName(inst)}${inst.qty > 1 ? ' ×' + inst.qty : ''}`);
+  save(); sseBroadcast(inst.campaignId, { inv: 1 });
+  sendJSON(res, 200, { ok: true });
+});
+
+// ---------- životy / identifikace / max. životy
+route('PUT', '/api/inv/instances/:id', async (req, res, params, userId, query) => {
+  const inst = db.itemInstances.find(i => i.id === parseInt(params.id, 10));
+  if (!inst) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  const viewer = userId && resolveViewer(userId, inst.campaignId, query.viewAs);
+  if (!viewer || !canTouchInst(inst, viewer)) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  const body = await readJSONBody(req);
+  if (body.identified !== undefined) {
+    if (!viewer.realDM) return sendJSON(res, 403, { error: 'Identifikaci přepíná DM.' });
+    inst.identified = !!body.identified;
+  }
+  if (body.hpMax !== undefined) {
+    if (!viewer.realDM) return sendJSON(res, 403, { error: 'Maximum životů mění DM.' });
+    inst.hpMax = Math.max(1, Math.min(10, parseInt(body.hpMax, 10) || inst.hpMax));
+    inst.hp = Math.min(inst.hp, inst.hpMax);
+  }
+  if (body.hp !== undefined) {
+    const m = itemMeta(instArticle(inst));
+    if (m.stackable) return sendJSON(res, 400, { error: 'Stackovatelné předměty životy nemají.' });
+    inst.hp = Math.max(0, Math.min(inst.hpMax, parseInt(body.hp, 10) || 0));
+  }
+  save(); sseBroadcast(inst.campaignId, { inv: 1 });
+  sendJSON(res, 200, instView(inst, viewer));
+});
+
+// ---------- rozdělení stacku
+route('POST', '/api/inv/instances/:id/split', async (req, res, params, userId, query) => {
+  const inst = db.itemInstances.find(i => i.id === parseInt(params.id, 10));
+  if (!inst) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  const viewer = userId && resolveViewer(userId, inst.campaignId, query.viewAs);
+  if (!viewer || !canTouchInst(inst, viewer)) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  const body = await readJSONBody(req);
+  const m = itemMeta(instArticle(inst));
+  if (!m.stackable) return sendJSON(res, 400, { error: 'Předmět není stackovatelný.' });
+  const qty = parseInt(body.qty, 10);
+  if (!qty || qty < 1 || qty >= inst.qty) return sendJSON(res, 400, { error: 'Neplatné množství.' });
+  const nu = { ...inst, id: nextId(), qty, loc: null, rot: 0 };
+  const to = normLoc(body.to);
+  const err = to && placeError(nu, to, 0, viewer);
+  if (!to || err) return sendJSON(res, 400, { error: err || 'Neplatný cíl.' });
+  nu.loc = to;
+  inst.qty -= qty;
+  db.itemInstances.push(nu);
+  save(); sseBroadcast(inst.campaignId, { inv: 1 });
+  sendJSON(res, 200, { id: nu.id });
+});
+
+// ---------- zničení instance
+route('DELETE', '/api/inv/instances/:id', async (req, res, params, userId, query) => {
+  const inst = db.itemInstances.find(i => i.id === parseInt(params.id, 10));
+  if (!inst) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  const viewer = userId && resolveViewer(userId, inst.campaignId, query.viewAs);
+  if (!viewer || !canTouchInst(inst, viewer)) return sendJSON(res, 404, { error: 'Předmět nenalezen.' });
+  if (!viewer.isDM && inst.hp !== 0) return sendJSON(res, 403, { error: 'Odstranit lze jen rozbitý předmět (DM může vše).' });
+  if (db.itemInstances.some(i => i.loc && i.loc.t === 'grid' && i.loc.cId === inst.id))
+    return sendJSON(res, 400, { error: 'Kontejner není prázdný — nejdřív ho vyprázdněte.' });
+  db.itemInstances = db.itemInstances.filter(i => i.id !== inst.id);
+  invLogAdd(inst.campaignId, viewer, `odstranil ${instLogName(inst)}`);
+  save(); sseBroadcast(inst.campaignId, { inv: 1 });
+  sendJSON(res, 200, { ok: true });
+});
+
+// ---------- deník přesunů
+route('GET', '/api/campaigns/:cid/inv/log', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
+  const rows = db.invLog.filter(l => l.campaignId === cid).slice(-100).reverse();
+  sendJSON(res, 200, rows.map(l => ({ ts: l.ts, who: l.who, text: l.text })));
 });
 
 // ================================================================ IMPORT Z D&D BEYOND
@@ -2296,13 +2553,10 @@ route('GET', '/api/images/:id', async (req, res, params, userId, query) => {
     const isCoverOf = a => a.coverImageId === img.id || a.coverThumbId === img.id;
     const asCover = db.articles.some(a =>
       a.campaignId === img.campaignId && isCoverOf(a) && articleVisibleToPlayer(a.id, viewer.userId));
-    // náhled předmětu v inventáři vlastní postavy (i když je článek předmětu skrytý)
-    const asInvThumb = !inBlock && !asCover && db.inventory.some(e => {
-      const ch = db.characters.find(c => c.id === e.characterId);
-      const a = db.articles.find(a => a.id === e.itemArticleId);
-      return ch && a && userCharIds(img.campaignId, viewer.userId).includes(ch.id) && isCoverOf(a) && a.campaignId === img.campaignId;
-    });
-    if (!inBlock && !asCover && !asInvThumb) { res.writeHead(404); return res.end(); }
+    // token / velký obrázek předmětu — tokeny leží v zónách viditelných všem členům
+    const asToken = db.articles.some(a => a.campaignId === img.campaignId && a.item &&
+      a.item.tokenImageId === img.id);
+    if (!inBlock && !asCover && !asToken) { res.writeHead(404); return res.end(); }
   }
   const headers = { 'Content-Type': img.mime, 'Cache-Control': 'private, max-age=3600' };
   if (query.download) { // stažení přílohy s původním názvem

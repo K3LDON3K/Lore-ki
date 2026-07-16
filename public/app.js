@@ -228,6 +228,7 @@ async function route() {
     if (sub === 'players') return renderPlayers();
     if (sub === 'categories') return renderCategoriesAdmin();
     if (sub === 'sessions') return renderSessions();
+    if (sub === 'inventory') return renderInventory();
     if (sub === 'session' && parts[3]) return renderSession(parseInt(parts[3], 10));
     if (sub === 'help') return renderHelp();
     if (sub === 'settings') return renderCampaignSettings(parts[3] || 'general');
@@ -309,6 +310,7 @@ const NAV_DEFS = {
   },
   articles: { icon: '📚', label: 'Všechny články', href: cid => `#/c/${cid}`, isActive: (a, cat) => a === 'articles' && cat === null },
   sessions: { icon: '🗓', label: 'Herní sezení', href: cid => `#/c/${cid}/sessions`, isActive: a => a === 'sessions' },
+  inventory: { icon: '🎒', label: 'Inventář', href: cid => `#/c/${cid}/inventory`, isActive: a => a === 'inventory' },
   // Správa hráčů i Kategorie žijí jako záložky uvnitř Nastavení kampaně
   settings: { icon: '⚙️', label: 'Nastavení kampaně', dmOnly: true, href: cid => `#/c/${cid}/settings`, isActive: a => a === 'settings' },
 };
@@ -359,6 +361,7 @@ function shell(contentHTML, { activeCat = undefined, active = '', noSidebar = fa
       const SECTION = {
         home: { label: 'O kampani', href: `#/c/${cid}/a/${state.campaign.homeArticleId}` },
         sessions: { label: 'Herní sezení', href: `#/c/${cid}/sessions` },
+        inventory: { label: 'Inventář', href: `#/c/${cid}/inventory` },
         help: { label: 'Nápověda', href: `#/c/${cid}/help` },
         settings: { label: 'Nastavení kampaně', href: `#/c/${cid}/settings` },
       };
@@ -2131,13 +2134,7 @@ async function renderArticle(aid) {
   const cid = state.campaign.id;
   const dm = canEdit();
   // inventář postavy (vidí DM a vlastník); poznámky z inventářů na článku předmětu
-  let inv = null, itemNotes = null;
-  if (a.character && (dm || a.owned)) {
-    try { inv = await api(`/api/characters/${a.character.id}/inventory`); } catch { }
-  }
-  if (a.category === 'Předměty') {
-    try { itemNotes = await api(`/api/articles/${aid}/inventory-notes`); } catch { }
-  }
+  // grafický inventář má vlastní stránku (menu → Inventář); na článku postavy je jen odkaz
   const ownerMode = !dm && !!a.owned; // hráč edituje článek své postavy
   const editable = dm || ownerMode;
   // pracovní kopie bloků pro inline úpravy — vlastník si SUROVÁ data (neporušená
@@ -2205,81 +2202,8 @@ async function renderArticle(aid) {
       </div>
       <p class="muted" style="margin-top:28px">Naposledy upraveno: ${fmtDate(a.updatedAt)}</p>
 
-      ${inv ? `
-      <hr class="block-divider">
-      <div class="inv">
-        <div class="inv-head">
-          <h2>🎒 Inventář — ${esc(inv.characterName)}</h2>
-          <div style="flex:1"></div>
-          ${dm ? `<button class="small" id="invAdd">＋ Přidat předmět</button>` : ''}
-        </div>
-        ${inv.entries.length === 0 ? `<p class="muted">Inventář je prázdný${dm ? ' — přidejte předmět (článek v kategorii „Předměty“)' : ''}.</p>` : ''}
-        ${inv.entries.map(e => {
-          const it = e.item || {};
-          const rcls = 'r-' + String(it.rarity || 'bezny').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '-');
-          return `
-          <div class="inv-row ${rcls}">
-            ${it.thumbId ? `<img class="inv-thumb" src="${imgUrl(it.thumbId)}" alt="">` : `<div class="inv-thumb">📦</div>`}
-            <div class="inv-name">
-              ${it.linkable ? `<a href="#/c/${cid}/a/${it.articleId}">${esc(it.title)}</a>` : esc(it.title || 'Neznámý předmět')}
-              ${it.description ? `<div class="muted">${esc(it.description)}</div>` : ''}
-            </div>
-            <span class="inv-qty" title="Množství">×${e.qty}</span>
-            <span class="inv-stat" title="Váha">${it.weight ? (it.weight * e.qty).toLocaleString('cs-CZ') + ' lb' : '—'}</span>
-            <span class="inv-price" title="Cena za kus">${esc(it.price || '—')}</span>
-            ${it.rarity ? `<span class="inv-rarity">${esc(it.rarity)}</span>` : ''}
-            ${dm ? `
-              <button class="small secondary icon" data-inv-minus="${e.id}" data-qty="${e.qty}" title="Ubrat">−</button>
-              <button class="small secondary icon" data-inv-plus="${e.id}" data-qty="${e.qty}" title="Přidat">＋</button>
-              <button class="small ghost icon" data-inv-del="${e.id}" title="Odebrat z inventáře">✕</button>` : ''}
-          </div>
-          <details>
-            <summary>📝 Poznámky (${e.notes.length})</summary>
-            <div style="padding:6px 10px">
-              ${e.notes.map(n => `
-                <div class="note">
-                  <div class="meta">
-                    <span class="author">${esc(n.author)}</span>
-                    <span class="muted">${fmtDate(n.createdAt)}</span>
-                    <span class="vis-badge ${n.visibility === 'dm' ? 'vis-dm' : 'vis-custom'}">${n.visibility === 'dm' ? 'Pouze DM' : 'DM + hráč'}</span>
-                    <span style="flex:1"></span>
-                    ${(n.mine || dm) ? `<button class="small ghost" data-invnote-del="${n.id}">Smazat</button>` : ''}
-                  </div>
-                  <div>${esc(n.text).replace(/\n/g, '<br>')}</div>
-                </div>`).join('') || '<p class="muted">Zatím žádné.</p>'}
-              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; margin-top:8px">
-                <textarea data-invnote-text="${e.id}" placeholder="Poznámka k předmětu…" style="flex:1; min-width:180px; min-height:44px"></textarea>
-                <select data-invnote-vis="${e.id}" style="width:auto">
-                  <option value="dm_owner">DM + hráč</option>
-                  <option value="dm">Pouze DM</option>
-                </select>
-                <button class="small" data-invnote-add="${e.id}">Uložit</button>
-              </div>
-            </div>
-          </details>`;
-        }).join('')}
-        ${inv.entries.length ? `<div class="inv-total">
-          <span>Položek: ${inv.entries.reduce((s, e) => s + e.qty, 0)}</span>
-          <span>Celková váha: ${inv.entries.reduce((s, e) => s + (e.item && e.item.weight ? e.item.weight * e.qty : 0), 0).toLocaleString('cs-CZ')} lb</span>
-        </div>` : ''}
-      </div>` : ''}
-
-      ${itemNotes && itemNotes.length ? `
-      <hr class="block-divider">
-      <h2 style="font-size:19px">🎒 V inventářích</h2>
-      ${itemNotes.map(g => `
-        <div class="card" style="padding:14px 18px">
-          <strong>🎭 ${esc(g.characterName)}</strong> <span class="inv-qty">×${g.qty}</span>
-          ${g.notes.map(n => `
-            <div class="note" style="margin-top:8px">
-              <div class="meta">
-                <span class="author">${esc(n.author)}</span>
-                <span class="muted">${fmtDate(n.createdAt)}</span>
-                <span class="vis-badge ${n.visibility === 'dm' ? 'vis-dm' : 'vis-custom'}">${n.visibility === 'dm' ? 'Pouze DM' : 'DM + hráč'}</span>
-              </div>
-              <div>${esc(n.text).replace(/\n/g, '<br>')}</div>
-            </div>`).join('') || '<div class="muted" style="margin-top:6px">Bez poznámek.</div>'}
-        </div>`).join('')}` : ''}
+      ${a.character ? `
+      <p><a href="#/c/${cid}/inventory"><button class="small secondary">🎒 Otevřít inventář postavy</button></a></p>` : ''}
 
       <hr class="block-divider">
       <h2 style="font-size:19px">📝 Poznámky</h2>
@@ -2347,42 +2271,6 @@ async function renderArticle(aid) {
   $app.querySelectorAll('[data-delnote]').forEach(b => b.onclick = async () => {
     if (!await confirmDialog('Smazat poznámku?', { title: 'Smazat poznámku', ok: 'Smazat', danger: true })) return;
     await api(`/api/notes/${b.dataset.delnote}`, { method: 'DELETE' });
-    renderArticle(aid);
-  });
-
-  // ---------- inventář
-  const invAdd = $app.querySelector('#invAdd');
-  if (invAdd) invAdd.onclick = () => pickArticle(async art => {
-    const qty = parseInt(prompt(`Množství předmětu „${art.title}“:`, '1'), 10) || 1;
-    try {
-      await api(`/api/characters/${a.character.id}/inventory`, { method: 'POST', body: { itemArticleId: art.id, qty } });
-      renderArticle(aid);
-    } catch (e) { alert(e.message); }
-  }, { category: 'Předměty' });
-  $app.querySelectorAll('[data-inv-plus]').forEach(b => b.onclick = async () => {
-    await api(`/api/inventory/${b.dataset.invPlus}`, { method: 'PUT', body: { qty: parseInt(b.dataset.qty, 10) + 1 } });
-    renderArticle(aid);
-  });
-  $app.querySelectorAll('[data-inv-minus]').forEach(b => b.onclick = async () => {
-    await api(`/api/inventory/${b.dataset.invMinus}`, { method: 'PUT', body: { qty: parseInt(b.dataset.qty, 10) - 1 } });
-    renderArticle(aid);
-  });
-  $app.querySelectorAll('[data-inv-del]').forEach(b => b.onclick = async () => {
-    if (!await confirmDialog('Odebrat předmět z inventáře včetně poznámek?', { title: 'Odebrat předmět', ok: 'Odebrat', danger: true })) return;
-    await api(`/api/inventory/${b.dataset.invDel}`, { method: 'DELETE' });
-    renderArticle(aid);
-  });
-  $app.querySelectorAll('[data-invnote-add]').forEach(b => b.onclick = async () => {
-    const id = b.dataset.invnoteAdd;
-    const text = $app.querySelector(`[data-invnote-text="${id}"]`).value.trim();
-    const visibility = $app.querySelector(`[data-invnote-vis="${id}"]`).value;
-    if (!text) return;
-    await api(`/api/inventory/${id}/notes`, { method: 'POST', body: { text, visibility } });
-    renderArticle(aid);
-  });
-  $app.querySelectorAll('[data-invnote-del]').forEach(b => b.onclick = async () => {
-    if (!await confirmDialog('Smazat poznámku?', { title: 'Smazat poznámku', ok: 'Smazat', danger: true })) return;
-    await api(`/api/invnotes/${b.dataset.invnoteDel}`, { method: 'DELETE' });
     renderArticle(aid);
   });
 
@@ -3147,16 +3035,63 @@ async function renderEditor(aid) {
           }).join('')}
           <input type="color" id="langColorCustom" value="${esc(a.langColor || '#6d5ae6')}" title="Vlastní barva" style="width:36px; height:32px; padding:2px">
         </div>` : ''}
-        ${a.category === 'Předměty' ? `
+        ${a.category === 'Předměty' ? (() => {
+          const it = a.item || {};
+          const num = (v, d) => v === undefined || v === null ? d : v;
+          return `
         <label>Předmět — parametry pro inventář</label>
         <div style="display:flex; gap:12px; flex-wrap:wrap">
-          <div style="flex:1; min-width:110px"><label style="margin-top:0">Váha (lb)</label><input id="iWeight" type="number" min="0" step="0.1" value="${(a.item && a.item.weight) || 0}"></div>
-          <div style="flex:1; min-width:110px"><label style="margin-top:0">Cena</label><input id="iPrice" placeholder="např. 50 zl" value="${esc((a.item && a.item.price) || '')}"></div>
+          <div style="flex:1; min-width:110px"><label style="margin-top:0">Váha (lb)</label><input id="iWeight" type="number" min="0" step="0.1" value="${it.weight || 0}"></div>
+          <div style="flex:1; min-width:110px"><label style="margin-top:0">Cena</label><input id="iPrice" placeholder="např. 50 zl" value="${esc(it.price || '')}"></div>
           <div style="flex:1; min-width:140px"><label style="margin-top:0">Vzácnost</label>
             <select id="iRarity">${['', 'Běžný', 'Neobvyklý', 'Vzácný', 'Velmi vzácný', 'Legendární', 'Artefakt'].map(r =>
-              `<option value="${r}" ${(a.item && a.item.rarity) === r ? 'selected' : ''}>${r || '—'}</option>`).join('')}</select>
+              `<option value="${r}" ${it.rarity === r ? 'selected' : ''}>${r || '—'}</option>`).join('')}</select>
           </div>
-        </div>` : ''}
+        </div>
+
+        <label>Token do inventáře (obrázek s průhledností, ideálně PNG)</label>
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+          <div id="iTokenPrev" class="token-prev">${it.tokenImageId ? `<img src="${imgUrl(it.tokenImageId)}" alt="">` : '🎴'}</div>
+          <input type="file" id="iToken" accept="image/*" style="width:auto">
+          <div><label style="margin-top:0">Šířka (políčka)</label>
+            <select id="iW">${[1, 2, 3, 4, 5, 6].map(n => `<option ${num(it.w, 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+          <div><label style="margin-top:0">Výška (políčka)</label>
+            <select id="iH">${[1, 2, 3, 4, 5, 6].map(n => `<option ${num(it.h, 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+          <div><label style="margin-top:0">Max. životy (1–10)</label>
+            <input id="iHpMax" type="number" min="1" max="10" value="${num(it.hpMax, 10)}" style="width:80px"></div>
+        </div>
+
+        <label>Vlastnosti</label>
+        <div style="display:flex; gap:14px; flex-wrap:wrap">
+          <label class="vischeck"><input type="checkbox" id="iWearable" ${it.wearable ? 'checked' : ''}> nositelný (jde na tělo postavy)</label>
+          <label class="vischeck"><input type="checkbox" id="iTwoHanded" ${it.twoHanded ? 'checked' : ''}> obouruční (zabere obě ruce)</label>
+          <label class="vischeck"><input type="checkbox" id="iStackable" ${it.stackable ? 'checked' : ''}> stackovatelný</label>
+          <label class="vischeck">max. ve stacku <input id="iStackMax" type="number" min="1" max="99" value="${num(it.stackMax, 10)}" style="width:70px; margin-left:6px"></label>
+          <label class="vischeck"><input type="checkbox" id="iNoDrop" ${it.noDrop ? 'checked' : ''}> nejde odhodit (quest předmět)</label>
+          <label class="vischeck"><input type="checkbox" id="iIdentDef" ${it.identifiedDefault ? 'checked' : ''}> nové kusy jsou rovnou identifikované</label>
+        </div>
+
+        <label>Identifikace a popisy</label>
+        <p class="muted" style="margin:0 0 6px">Dokud kus není identifikovaný, hráč vidí jen <b>obecný název</b> a <b>veřejný popis</b>. Pravý název (název článku) a tajný popis se odhalí identifikací.</p>
+        <div style="display:flex; gap:12px; flex-wrap:wrap">
+          <div style="flex:1; min-width:200px"><label style="margin-top:0">Obecný název (neidentifikováno)</label>
+            <input id="iUnident" placeholder="např. Tajemný meč" value="${esc(it.unidentifiedName || '')}"></div>
+        </div>
+        <label style="margin-top:8px">Veřejný popis (vidí každý držitel)</label>
+        <textarea id="iPublic" style="min-height:52px">${esc(it.publicText || '')}</textarea>
+        <label>Tajný popis (odhalí se identifikací)</label>
+        <textarea id="iSecret" style="min-height:52px">${esc(it.secretText || '')}</textarea>
+
+        <label><input type="checkbox" id="iIsCont" ${it.container ? 'checked' : ''} style="width:auto; margin-right:6px">Kontejner (batoh, brašna, opasek s kapsami…)</label>
+        <div id="iContWrap" style="${it.container ? '' : 'display:none'}">
+          <p class="muted" style="margin:4px 0 6px">Klikáním nakreslete tvar. Každé kliknutí přepne políčko: prázdné → 🟢 volná akce → 🟡 akce → 🔴 celé kolo → prázdné.</p>
+          <div id="iContGrid" class="contgrid-edit"></div>
+          <div style="display:flex; gap:12px; align-items:center; margin-top:8px">
+            <label style="margin:0">Kolik políček zabírá na slotu postavy</label>
+            <input id="iBodySize" type="number" min="1" max="4" value="${num(it.bodySize, 4)}" style="width:70px">
+          </div>
+        </div>`;
+        })() : ''}
       </div>
 
       <h2 style="font-size:19px">Obsahové bloky</h2>
@@ -3295,15 +3230,62 @@ async function renderEditor(aid) {
     $app.querySelectorAll('[data-langcolor]').forEach(btn => btn.onclick = () => { a.langColor = btn.dataset.langcolor; draw(); });
     const lcc = $app.querySelector('#langColorCustom');
     if (lcc) lcc.onchange = () => { a.langColor = lcc.value; draw(); };
-    ['iWeight', 'iPrice', 'iRarity'].forEach(id => {
-      const el = $app.querySelector('#' + id);
-      if (el) el.onchange = el.oninput = () => {
-        a.item = a.item || {};
-        if (id === 'iWeight') a.item.weight = parseFloat(el.value) || 0;
-        if (id === 'iPrice') a.item.price = el.value;
-        if (id === 'iRarity') a.item.rarity = el.value;
+    // ---------- předmět: token, mřížka kontejneru, sběr polí až při uložení
+    if (a.category === 'Předměty') {
+      a.item = a.item || {};
+      const tok = $app.querySelector('#iToken');
+      if (tok) tok.onchange = async (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        try {
+          const r = await uploadImage(file, file.name || 'token.png'); // bez ořezu — tokeny mívají průhlednost
+          a.item.tokenImageId = r.id;
+          $app.querySelector('#iTokenPrev').innerHTML = `<img src="${imgUrl(r.id)}" alt="">`;
+        } catch (err) { alert(err.message); }
       };
-    });
+      // klikací mřížka kontejneru (8×6): prázdné → g → y → r → prázdné
+      const gridEl = $app.querySelector('#iContGrid');
+      const cellMap = new Map(((a.item.container || {}).cells || []).map(c => [c.x + ',' + c.y, c.c]));
+      const drawGrid = () => {
+        if (!gridEl) return;
+        let html = '';
+        for (let y = 0; y < 6; y++) for (let x = 0; x < 8; x++) {
+          const c = cellMap.get(x + ',' + y);
+          html += `<div class="cg-cell ${c ? 'on c-' + c : ''}" data-x="${x}" data-y="${y}"></div>`;
+        }
+        gridEl.innerHTML = html;
+        gridEl.querySelectorAll('.cg-cell').forEach(el => el.onclick = () => {
+          const k = el.dataset.x + ',' + el.dataset.y;
+          const cur = cellMap.get(k);
+          const next = !cur ? 'g' : cur === 'g' ? 'y' : cur === 'y' ? 'r' : null;
+          if (next) cellMap.set(k, next); else cellMap.delete(k);
+          drawGrid();
+        });
+      };
+      drawGrid();
+      const isCont = $app.querySelector('#iIsCont');
+      if (isCont) isCont.onchange = () => { $app.querySelector('#iContWrap').style.display = isCont.checked ? '' : 'none'; };
+      // sběr všech polí předmětu do a.item (volá se před uložením)
+      a._collectItem = () => {
+        const g = id => $app.querySelector('#' + id);
+        const chk = id => { const el = g(id); return el ? el.checked : false; };
+        const val = (id, d) => { const el = g(id); return el ? el.value : d; };
+        const cont = chk('iIsCont')
+          ? { cells: [...cellMap.entries()].map(([k, c]) => { const [x, y] = k.split(','); return { x: +x, y: +y, c }; }) }
+          : null;
+        a.item = {
+          ...a.item,
+          weight: parseFloat(val('iWeight', 0)) || 0, price: val('iPrice', ''), rarity: val('iRarity', ''),
+          w: parseInt(val('iW', 1), 10) || 1, h: parseInt(val('iH', 1), 10) || 1,
+          hpMax: parseInt(val('iHpMax', 10), 10) || 10,
+          wearable: chk('iWearable'), twoHanded: chk('iTwoHanded'),
+          stackable: chk('iStackable'), stackMax: parseInt(val('iStackMax', 10), 10) || 10,
+          noDrop: chk('iNoDrop'), identifiedDefault: chk('iIdentDef'),
+          unidentifiedName: val('iUnident', ''), publicText: val('iPublic', ''), secretText: val('iSecret', ''),
+          bodySize: parseInt(val('iBodySize', 4), 10) || 4,
+          container: cont && cont.cells.length ? cont : null
+        };
+      };
+    }
     $app.querySelector('#saveArticle').onclick = async () => {
       try {
         if (!String(a.title).trim()) throw new Error('Zadejte název článku.');
@@ -3317,6 +3299,7 @@ async function renderEditor(aid) {
           const g = id => { const el = $app.querySelector('#' + id); return el ? el.value : ''; };
           a.charMeta = { race: g('cmRace'), classes: g('cmClasses'), level: parseInt(g('cmLevel'), 10) || null, background: g('cmBackground'), alignment: g('cmAlignment') };
         }
+        if (a.category === 'Předměty' && a._collectItem) a._collectItem();
         await api(`/api/articles/${saveId}`, {
           method: 'PUT',
           body: { title: a.title, description: a.description, category: a.category, tags: a.tags, coverImageId: a.coverImageId, coverThumbId: a.coverThumbId, coverWidth: a.coverWidth || 100, item: a.item || undefined, charMeta: a.charMeta || undefined, langColor: a.langColor || undefined, blocks }
@@ -3492,10 +3475,20 @@ const HELP_SECTIONS = [
     <p>Zlatými tlačítky vyberete, <b>které postavy ji uvidí</b> (vy a DM vždycky). Tlačítko „Vybrat všechny“ označí celou družinu.</p>
     <p>Poznámka k <b>cizímu</b> článku postavy se zobrazí ostatním až po <b>schválení</b> — schvaluje ji DM nebo vlastník té postavy. Než ji schválí, vidíte ji jen vy a DM.</p>`],
 
-  ['🎒', 'Inventář a předměty', `
-    <p>Předmět je <b>článek v kategorii „Předměty“</b> — má váhu, cenu a vzácnost (ta se barví podle zvyklostí D&D).</p>
-    <p>Předměty vkládá do inventáře postavy <b>DM</b> (s množstvím). Inventář najdete na článku postavy a vidí ho <b>jen vlastník a DM</b>. Sčítá se váha.</p>
-    <p>K předmětu v inventáři píše hráč i DM <b>poznámky</b> s viditelností <b>„DM + hráč“</b> nebo <b>„Pouze DM“</b> — hodí se na prokletí, která hráč ještě netuší. Tytéž poznámky se podle oprávnění ukazují i na článku předmětu v sekci „V inventářích“.</p>`],
+  ['🎒', 'Grafický inventář', `
+    <p>Položka <b>Inventář</b> v menu. Nahoře přepínáte mezi <b>svými postavami</b> a <b>zónami podlahy</b>; DM vidí postavy všech. Do cizího inventáře hráč nevidí.</p>
+    <h4>Nákres postavy</h4>
+    <p>Postava má sloty (hlava, trup, ruce, opasek, prsteny…). <b>Nositelné</b> předměty na ně přetáhnete myší nebo prstem — rozhoduje počet políček, ne tvar (štít 2×2 se do ruky vejde). <b>Obouruční</b> zbraň zabere obě ruce, druhá zešedne.</p>
+    <h4>Předmět = konkrétní kus</h4>
+    <p>Každý kus má <b>vlastní životy</b> (číslo na tokenu; hráč si je upravuje podle pokynů DM v detailu předmětu), stav <b>identifikace</b> a pozici. Na <b>0 životech</b> je předmět rozbitý (zšedne, ✕) — odstranit ho může vlastník nebo DM. Když kus předáte dál, jdou všechny tyto informace s ním.</p>
+    <h4>Batohy a kapsy</h4>
+    <p>Kontejner (batoh, brašna, opasek) nasazený na tělo zpřístupní svou <b>mřížku</b>. Tam záleží na tvaru tokenu — během tažení otočíte předmět klávesou <b>R</b>, položený předmět tlačítkem ⟳ v detailu. Barvy políček říkají, jak rychle se k předmětu ve hře dostanete: 🟢 volná akce, 🟡 akce, 🔴 celé kolo. Nenositelné předměty patří jen do kontejnerů a zón. Sundaný batoh si obsah nese s sebou; kontejnery do sebe nejdou vkládat.</p>
+    <h4>Zóny podlahy a předávání</h4>
+    <p>Zóny („Táborák“, „Jeskyně B“…) zakládá DM. Jsou <b>společné pro celou kampaň</b> — co tam kdo odloží, může si vzít kdokoli. Předání předmětu jinému hráči jde právě takto: odložit → on si vezme. Změny se všem projeví okamžitě. <b>📜 Deník přesunů</b> dole zaznamenává, kdo co odložil a vzal. Quest předměty se zaškrtnutím „nejde odhodit“ na zem položit nejdou.</p>
+    <h4>Identifikace</h4>
+    <p>Neidentifikovaný kus (žlutý otazník) ukazuje jen <b>obecný název</b> a veřejný popis — pravé jméno a tajné vlastnosti se odhalí, až identifikaci přepne DM (po použití svitku, zaplacení služby…).</p>
+    <h4>Zakládání předmětů (DM)</h4>
+    <p>Předmět je článek v kategorii <b>Předměty</b>. V editoru mu nastavíte <b>token</b> (obrázek s průhledností), velikost v políčkách, vlastnosti (nositelný, obouruční, stackovatelný, quest), max. životy, obecný název, veřejný a tajný popis — a u kontejnerů <b>naklikáte mřížku</b> včetně barev. Konkrétní kusy pak vytváříte tlačítkem <b>＋ Vytvořit předmět</b> v zóně a rozdáte je přetažením.</p>`],
 
   ['🗓', 'Herní sezení', `
     <p>Sezení je záznam jednoho hraní: název, datum a účastnící se postavy.</p>
@@ -3641,6 +3634,7 @@ function chatConnect() {
       let data = {};
       try { data = JSON.parse(e.data); } catch { }
       if (data.presence) { refreshOnline(); return; } // někdo se připojil/odpojil
+      if (data.inv) { invOnPush(); return; } // změna inventáře → překreslit stránku Inventář
       if (data.roomId && chat.open && chat.view === 'room' && chat.roomId === data.roomId) {
         chatLoadNewMessages(); // zahraje zvuk, dorazí-li cizí zpráva
       } else {
@@ -3945,6 +3939,426 @@ async function chatRenderManage(panel) {
     chat.view = 'rooms'; chat.roomId = null;
     await chatLoadRooms(); chatRender();
   };
+}
+
+// ================================================================ INVENTÁŘ (grafický)
+// Nákres postavy se sloty, mřížky kontejnerů, zóny podlahy. Drag&drop přes Pointer
+// Events (funguje myší i dotykem). Server všechno validuje — klient jen kreslí a posílá.
+const INV_SLOT_DEFS = { // w/h = vzhled na nákresu, cap = kapacita v políčkách (kopíruje server)
+  back: { l: 'Batoh', w: 2, h: 2, cap: 4 }, handR: { l: 'Pravá ruka', w: 1, h: 3, cap: 4 }, gloves: { l: 'Rukavice', w: 1, h: 1, cap: 1 },
+  wristR: { l: 'Zápěstí', w: 1, h: 1, cap: 1 }, ring1: { l: 'Prsten 1', w: 1, h: 1, cap: 1 }, ring2: { l: 'Prsten 2', w: 1, h: 1, cap: 1 },
+  head: { l: 'Hlava', w: 1, h: 1, cap: 1 }, neck: { l: 'Krk', w: 1, h: 1, cap: 1 }, torso: { l: 'Trup', w: 2, h: 2, cap: 4 },
+  belt: { l: 'Opasek', w: 3, h: 1, cap: 3 }, pants: { l: 'Kalhoty', w: 2, h: 1, cap: 2 }, boots: { l: 'Boty', w: 1, h: 1, cap: 1 },
+  cloak: { l: 'Plášť', w: 1, h: 2, cap: 2 }, handL: { l: 'Levá ruka', w: 1, h: 3, cap: 4 }, forearm: { l: 'Předloktí', w: 1, h: 1, cap: 1 },
+  wristL: { l: 'Zápěstí', w: 1, h: 1, cap: 1 }, ring3: { l: 'Prsten 3', w: 1, h: 1, cap: 1 }, ring4: { l: 'Prsten 4', w: 1, h: 1, cap: 1 }
+};
+const INV_COLUMNS = [
+  ['back', 'handR', 'gloves', 'wristR', 'ring1', 'ring2'],
+  ['head', 'neck', 'torso', 'belt', 'pants', 'boots'],
+  ['cloak', 'handL', 'forearm', 'wristL', 'ring3', 'ring4'],
+];
+const invUI = { tab: null, chars: [], zones: [], items: [], charData: null, reloading: false };
+
+function invToast(msg) {
+  document.querySelectorAll('.inv-toast').forEach(t => t.remove());
+  const t = h(`<div class="inv-toast">${esc(msg)}</div>`).firstElementChild;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2600);
+}
+
+/** Token předmětu. cell = velikost políčka v px; fit = roztáhnout do rodiče (sloty na těle). */
+function invTokenEl(it, cell, fit = false) {
+  const w = it.rot ? it.h : it.w, h0 = it.rot ? it.w : it.h;
+  const el = document.createElement('div');
+  el.className = 'inv-token' + (it.broken ? ' broken' : '');
+  el.dataset.inst = it.id;
+  if (it.articleId) el.dataset.art = it.articleId;
+  if (it.stackable) el.dataset.stack = 1;
+  el.title = it.name;
+  if (!fit) { el.style.width = (w * cell) + 'px'; el.style.height = (h0 * cell) + 'px'; }
+  const img = it.tokenImageId
+    ? `<img src="${imgUrl(it.tokenImageId)}" alt="" draggable="false" ${it.rot ? 'class="rot90"' : ''}>`
+    : `<span class="inv-token-fallback">📦</span>`;
+  el.innerHTML = `${img}
+    ${!it.identified ? '<span class="tk-unident" title="Neidentifikováno">?</span>' : ''}
+    ${it.stackable && it.qty > 1 ? `<span class="tk-qty">×${it.qty}</span>` : ''}
+    ${!it.stackable ? `<span class="tk-hp ${it.hp <= 3 ? 'low' : ''}">${it.hp}/${it.hpMax}</span>` : ''}
+    ${it.broken ? '<span class="tk-broken">✕</span>' : ''}`;
+  invAttachDrag(el, it);
+  return el;
+}
+
+/** Cíl pod ukazatelem při puštění tokenu. */
+function invDropTarget(ev, dragging) {
+  const els = document.elementsFromPoint(ev.clientX, ev.clientY);
+  for (const el of els) {
+    if (!el.closest) continue;
+    if (el.classList && el.classList.contains('inv-ghost')) continue;
+    const tok = el.closest('[data-inst]');
+    if (tok && dragging.stackable && dragging.articleId && +tok.dataset.art === dragging.articleId && +tok.dataset.inst !== dragging.id)
+      return { type: 'merge', into: +tok.dataset.inst, el: tok };
+    const cellEl = el.closest('[data-drop-cell]');
+    if (cellEl) return { type: 'move', to: { t: 'grid', cId: +cellEl.dataset.c, x: +cellEl.dataset.x, y: +cellEl.dataset.y }, el: cellEl };
+    const slotEl = el.closest('[data-drop-slot]');
+    if (slotEl) return { type: 'move', to: { t: 'slot', charId: +slotEl.dataset.char, slot: slotEl.dataset.dropSlot }, el: slotEl };
+    const zoneEl = el.closest('[data-drop-zone]');
+    if (zoneEl) return { type: 'move', to: { t: 'zone', zId: +zoneEl.dataset.dropZone }, el: zoneEl };
+    const takeEl = el.closest('[data-drop-take]');
+    if (takeEl) return { type: 'take', charId: +takeEl.dataset.dropTake, el: takeEl };
+  }
+  return null;
+}
+
+/** „Vzít si“: najde na postavě první volné místo — nejdřív sloty, pak mřížky kontejnerů. */
+async function invTakeToChar(it, chId) {
+  let lastErr = null;
+  let data;
+  try { data = await api(`/api/inv/char/${chId}`); } catch (e) { invToast(e.message); return false; }
+  const used = new Set(data.items.filter(i => i.loc && i.loc.t === 'slot').map(i => i.loc.slot));
+  if (it.wearable) {
+    const order = ['handR', 'handL', 'back', 'belt', 'torso', 'cloak', 'pants', 'head', 'neck', 'boots', 'gloves', 'forearm', 'wristR', 'wristL', 'ring1', 'ring2', 'ring3', 'ring4'];
+    for (const slot of order.filter(sl => !used.has(sl) && INV_SLOT_DEFS[sl].cap >= it.bodyCells)) {
+      try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: { t: 'slot', charId: chId, slot } } }); return true; }
+      catch (e) { lastErr = e; } // např. obouruční pravidlo — zkusí se další slot
+    }
+  }
+  if (!it.container) { // do mřížek nasazených kontejnerů (kontejner do mřížky nesmí)
+    for (const cont of data.items.filter(i => i.container && i.loc && i.loc.t === 'slot')) {
+      const spot = invFindSpot(cont, data.items, it);
+      if (!spot) continue;
+      try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: { t: 'grid', cId: cont.id, x: spot.x, y: spot.y }, rot: spot.rot } }); return true; }
+      catch (e) { lastErr = e; }
+    }
+  }
+  invToast(lastErr ? lastErr.message : 'Nikam se nevejde — uvolněte místo nebo použijte přesné přetažení.');
+  return false;
+}
+/** Klientské hledání volného místa v mřížce (server stejně validuje znovu). */
+function invFindSpot(cont, items, it) {
+  const cells = new Set((cont.container.cells || []).map(c => c.x + ',' + c.y));
+  const rects = items.filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === cont.id && i.id !== it.id)
+    .map(i => ({ x: i.loc.x, y: i.loc.y, w: i.rot ? i.h : i.w, h: i.rot ? i.w : i.h }));
+  const maxX = Math.max(...[...cells].map(k => +k.split(',')[0]), 0);
+  const maxY = Math.max(...[...cells].map(k => +k.split(',')[1]), 0);
+  for (const rot of [0, 1]) {
+    const w = rot ? it.h : it.w, h0 = rot ? it.w : it.h;
+    for (let y = 0; y <= maxY; y++) for (let x = 0; x <= maxX; x++) {
+      let ok = true;
+      for (let dx = 0; dx < w && ok; dx++) for (let dy = 0; dy < h0 && ok; dy++)
+        if (!cells.has((x + dx) + ',' + (y + dy))) ok = false;
+      if (ok) for (const r of rects)
+        if (x < r.x + r.w && r.x < x + w && y < r.y + r.h && r.y < y + h0) { ok = false; break; }
+      if (ok) return { x, y, rot };
+    }
+    if (it.w === it.h) break; // čtverec — otočení nic nezmění
+  }
+  return null;
+}
+
+/** Drag&drop tokenu (pointer events = myš i dotyk). Klik bez tažení otevře detail. */
+function invAttachDrag(el, it) {
+  el.style.touchAction = 'none';
+  el.addEventListener('pointerdown', e => {
+    if (e.button) return;
+    e.preventDefault();
+    const start = { x: e.clientX, y: e.clientY };
+    let moved = false, ghost = null, rot = it.rot;
+    const cell = 44;
+    const ghostSize = () => {
+      const w = rot ? it.h : it.w, h0 = rot ? it.w : it.h;
+      ghost.style.width = (w * cell) + 'px'; ghost.style.height = (h0 * cell) + 'px';
+      const img = ghost.querySelector('img'); if (img) img.classList.toggle('rot90', !!rot);
+    };
+    const clearHl = () => document.querySelectorAll('.drop-ok').forEach(x => x.classList.remove('drop-ok'));
+    const onMove = ev => {
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 7) {
+        moved = true;
+        ghost = el.cloneNode(true);
+        ghost.className = 'inv-token inv-ghost';
+        document.body.appendChild(ghost);
+        ghostSize();
+        el.classList.add('drag-src');
+      }
+      if (!moved) return;
+      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+      clearHl();
+      const t = invDropTarget(ev, it);
+      if (t && t.el) t.el.classList.add('drop-ok');
+    };
+    const onKey = ev => { // R otočí token během tažení (desktop)
+      if ((ev.key === 'r' || ev.key === 'R') && moved) { rot = rot ? 0 : 1; ghostSize(); }
+    };
+    const cleanup = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('keydown', onKey);
+      clearHl();
+      if (ghost) ghost.remove();
+      el.classList.remove('drag-src');
+    };
+    const onUp = async ev => {
+      const t = moved ? invDropTarget(ev, it) : null;
+      cleanup();
+      if (!moved) { invDetail(it.id); return; }
+      if (!t) return;
+      try {
+        if (t.type === 'merge') await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { mergeInto: t.into } });
+        else if (t.type === 'take') { if (!await invTakeToChar(it, t.charId)) return; }
+        else await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: t.to, rot } });
+        invDrawBody();
+      } catch (err) { invToast(err.message); }
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp, { once: true });
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+/** Mřížka kontejneru: buňky s barvou zóny + tokeny uvnitř. */
+function invContGridEl(cont, items, cell = 44) {
+  const cells = (cont.container && cont.container.cells) || [];
+  const maxX = Math.max(...cells.map(c => c.x), 0), maxY = Math.max(...cells.map(c => c.y), 0);
+  const wrap = document.createElement('div');
+  wrap.className = 'contgrid';
+  wrap.style.width = ((maxX + 1) * cell) + 'px';
+  wrap.style.height = ((maxY + 1) * cell) + 'px';
+  for (const c of cells) {
+    const d = document.createElement('div');
+    d.className = 'cg-cell on c-' + (c.c || 'g');
+    d.dataset.c = cont.id; d.dataset.x = c.x; d.dataset.y = c.y;
+    d.setAttribute('data-drop-cell', '1');
+    d.style.left = (c.x * cell) + 'px'; d.style.top = (c.y * cell) + 'px';
+    d.style.width = cell + 'px'; d.style.height = cell + 'px';
+    wrap.appendChild(d);
+  }
+  for (const it of items.filter(i => i.loc && i.loc.t === 'grid' && i.loc.cId === cont.id)) {
+    const tok = invTokenEl(it, cell);
+    tok.style.position = 'absolute';
+    tok.style.left = (it.loc.x * cell) + 'px'; tok.style.top = (it.loc.y * cell) + 'px';
+    wrap.appendChild(tok);
+  }
+  return wrap;
+}
+
+async function renderInventory() {
+  const cid = state.campaign.id;
+  let chars = [], zones = [];
+  try { [chars, zones] = await Promise.all([api(`/api/campaigns/${cid}/inv/chars`), api(`/api/campaigns/${cid}/inv/zones`)]); } catch { }
+  invUI.chars = chars; invUI.zones = zones;
+  const valid = invUI.tab && (
+    (invUI.tab[0] === 'c' && chars.some(c => 'c' + c.id === invUI.tab)) ||
+    (invUI.tab[0] === 'z' && zones.some(z => 'z' + z.id === invUI.tab)));
+  if (!valid) invUI.tab = chars.length ? 'c' + chars[0].id : (zones.length ? 'z' + zones[0].id : null);
+  const dm = canEdit();
+
+  shell(`
+    <div class="pagehead"><h1>🎒 Inventář</h1></div>
+    <p class="muted" style="margin-top:-8px">Předměty přetahujte myší nebo prstem. Během tažení otočíte token klávesou <b>R</b>; kliknutím otevřete detail. Předmět ze země si vezmete <b>přetažením na záložku své postavy</b> nahoře (najde si volné místo sám) nebo tlačítkem v detailu. Předání jinému hráči: odložte do zóny, on si vezme.</p>
+    <div class="inv-tabs">
+      ${chars.map(c => `<button class="inv-tab ${invUI.tab === 'c' + c.id ? 'on' : ''}" data-tab="c${c.id}" data-drop-take="${c.id}">🎭 ${esc(c.name)}</button>`).join('')}
+      <span class="inv-tab-sep"></span>
+      ${zones.map(z => `<button class="inv-tab zone ${invUI.tab === 'z' + z.id ? 'on' : ''}" data-tab="z${z.id}">📍 ${esc(z.name)} <span class="count">${z.count}</span></button>`).join('')}
+      ${dm ? `<button class="inv-tab ghostbtn" id="invZoneAdd" title="Nová zóna podlahy">＋ zóna</button>` : ''}
+    </div>
+    <div id="invBody"><p class="muted">Načítám…</p></div>
+    <details class="session-seg" style="margin-top:18px">
+      <summary>📜 Deník přesunů</summary>
+      <div class="seg-body" id="invLogBody"><p class="muted">Načte se po rozbalení…</p></div>
+    </details>`,
+    { active: 'inventory' });
+
+  $app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { invUI.tab = b.dataset.tab; renderInventory(); });
+  const za = $app.querySelector('#invZoneAdd');
+  if (za) za.onclick = async () => {
+    const name = prompt('Název zóny (např. Táborák):');
+    if (!name || !name.trim()) return;
+    try { await api(`/api/campaigns/${cid}/inv/zones`, { method: 'POST', body: { name } }); renderInventory(); }
+    catch (e) { invToast(e.message); }
+  };
+  const logSeg = $app.querySelector('.session-seg');
+  logSeg.addEventListener('toggle', async () => {
+    if (!logSeg.open) return;
+    const rows = await api(`/api/campaigns/${cid}/inv/log`).catch(() => []);
+    $app.querySelector('#invLogBody').innerHTML = rows.length
+      ? rows.map(r => `<div class="invlog-row"><span class="muted">${fmtDate(r.ts)}</span> <b>${esc(r.who)}</b> ${esc(r.text)}</div>`).join('')
+      : '<p class="muted">Zatím žádné záznamy.</p>';
+  });
+  await invDrawBody();
+}
+
+/** Překreslí tělo stránky podle aktivní záložky (volá se i po SSE zprávě). */
+async function invDrawBody() {
+  const body = document.getElementById('invBody');
+  if (!body || !invUI.tab) { if (body) body.innerHTML = '<p class="muted">Žádné postavy ani zóny. DM založí zónu tlačítkem ＋.</p>'; return; }
+  const cid = state.campaign.id;
+  const dm = canEdit();
+
+  if (invUI.tab[0] === 'c') {
+    const chId = +invUI.tab.slice(1);
+    let data;
+    try { data = await api(`/api/inv/char/${chId}`); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    invUI.items = data.items;
+    body.innerHTML = '';
+    const doll = document.createElement('div');
+    doll.className = 'inv-doll';
+    for (const col of INV_COLUMNS) {
+      const colEl = document.createElement('div');
+      colEl.className = 'inv-col';
+      for (const key of col) {
+        const def = INV_SLOT_DEFS[key];
+        const slot = document.createElement('div');
+        slot.className = 'inv-slot';
+        slot.dataset.dropSlot = key; slot.dataset.char = chId;
+        slot.style.width = (def.w * 52) + 'px'; slot.style.height = (def.h * 52) + 'px';
+        slot.innerHTML = `<span class="sl-label">${def.l}</span>`;
+        const it = data.items.find(i => i.loc && i.loc.t === 'slot' && i.loc.charId === chId && i.loc.slot === key);
+        if (it) { const tok = invTokenEl(it, 52, true); tok.classList.add('fit'); slot.appendChild(tok); slot.classList.add('filled'); }
+        colEl.appendChild(slot);
+      }
+      doll.appendChild(colEl);
+    }
+    // obouruční zbraň v ruce → druhá ruka zašedne
+    const hands = ['handR', 'handL'];
+    for (const hd of hands) {
+      const it = data.items.find(i => i.loc && i.loc.t === 'slot' && i.loc.slot === hd && i.twoHanded);
+      if (it) {
+        const other = doll.querySelector(`[data-drop-slot="${hands.find(x => x !== hd)}"]`);
+        if (other) { other.classList.add('disabled'); other.removeAttribute('data-drop-slot'); other.title = 'Obouruční zbraň zabírá obě ruce'; }
+      }
+    }
+    body.appendChild(doll);
+    // nasazené kontejnery
+    const conts = data.items.filter(i => i.container && i.loc && i.loc.t === 'slot');
+    if (conts.length) {
+      const wrap = document.createElement('div');
+      wrap.className = 'inv-conts';
+      for (const cont of conts) {
+        const box = document.createElement('div');
+        box.className = 'inv-cont';
+        box.innerHTML = `<div class="inv-cont-title">${esc(cont.name)} <span class="muted">(${INV_SLOT_DEFS[cont.loc.slot] ? INV_SLOT_DEFS[cont.loc.slot].l : cont.loc.slot})</span></div>
+          <div class="inv-cont-legend"><span class="lg c-g"></span>volná akce <span class="lg c-y"></span>akce <span class="lg c-r"></span>celé kolo</div>`;
+        box.appendChild(invContGridEl(cont, data.items));
+        wrap.appendChild(box);
+      }
+      body.appendChild(wrap);
+    }
+    return;
+  }
+
+  // ---------- zóna podlahy
+  const zId = +invUI.tab.slice(1);
+  let items = [];
+  try { items = await api(`/api/inv/zones/${zId}/items`); } catch (e) { body.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+  invUI.items = items;
+  body.innerHTML = `
+    <div class="toolbar" style="margin:0 0 10px">
+      ${dm ? `<button class="small" id="invSpawn">＋ Vytvořit předmět</button>
+              <button class="small danger" id="invZoneDel">Smazat zónu</button>` : ''}
+      <span class="muted">Ze země si předmět vezmete přetažením na záložku své postavy nahoře, nebo kliknutím na předmět → „Vzít si“.</span>
+    </div>
+    <div class="inv-zonearea" data-drop-zone="${zId}"></div>`;
+  const area = body.querySelector('.inv-zonearea');
+  if (!items.length) area.innerHTML = '<p class="muted" style="padding:16px">Prázdno. Sem se odkládají předměty pro ostatní.</p>';
+  for (const it of items) area.appendChild(invTokenEl(it, 44));
+  const sp = body.querySelector('#invSpawn');
+  if (sp) sp.onclick = () => pickArticle(async art => {
+    try {
+      await api(`/api/campaigns/${cid}/inv/instances`, { method: 'POST', body: { articleId: art.id, to: { t: 'zone', zId } } });
+      invDrawBody(); renderInventoryTabsRefresh();
+    } catch (e) { invToast(e.message); }
+  }, { category: 'Předměty' });
+  const zd = body.querySelector('#invZoneDel');
+  if (zd) zd.onclick = async () => {
+    if (!await confirmDialog('Smazat zónu? Musí být prázdná.', { title: 'Smazat zónu', ok: 'Smazat', danger: true })) return;
+    try { await api(`/api/inv/zones/${zId}`, { method: 'DELETE' }); invUI.tab = null; renderInventory(); }
+    catch (e) { invToast(e.message); }
+  };
+}
+function renderInventoryTabsRefresh() { /* počty u zón se srovnají při příštím překreslení */ }
+
+/** Detail předmětu v pravém panelu (stejný vzor jako reference). */
+async function invDetail(instId) {
+  const it = invUI.items.find(i => i.id === instId);
+  if (!it) return;
+  const el = refPaneEl(); if (!el) return;
+  refPane.id = null; // panel teď patří inventáři
+  const dm = canEdit();
+  el.innerHTML = `
+    <div class="refpane-head">
+      <div style="flex:1"></div>
+      <button class="small ghost" data-k="close" title="Zavřít">✕</button>
+    </div>
+    <div class="refpane-body">
+      <div class="invd-imgwrap">${it.tokenImageId ? `<img class="invd-img" src="${imgUrl(it.tokenImageId)}" alt="">` : '<div class="invd-img invd-noimg">📦</div>'}</div>
+      <h2 class="refpane-title">${esc(it.name)} ${!it.identified ? '<span class="tag" title="Neidentifikováno">❓ neidentifikováno</span>' : ''} ${it.broken ? '<span class="tag" style="color:var(--danger)">rozbitý</span>' : ''}</h2>
+      ${it.publicText ? `<p>${esc(it.publicText)}</p>` : ''}
+      ${it.secretText ? `<div class="invd-secret"><b>🔮 Odhalené vlastnosti</b><br>${esc(it.secretText)}</div>` : ''}
+      ${it.stackable ? `<p><b>Množství:</b> ×${it.qty} ${it.qty > 1 ? `<button class="small secondary" data-k="split">Rozdělit stack…</button>` : ''}</p>` : `
+      <div class="invd-hp">
+        <b>Životy</b>
+        <button class="small secondary" data-k="hpm" ${it.hp <= 0 ? 'disabled' : ''}>−</button>
+        <span class="invd-hpval ${it.hp <= 3 ? 'low' : ''}">${it.hp} / ${it.hpMax}</span>
+        <button class="small secondary" data-k="hpp" ${it.hp >= it.hpMax ? 'disabled' : ''}>＋</button>
+        ${dm ? `<label style="margin:0 0 0 10px">max</label><input data-k="hpmax" type="number" min="1" max="10" value="${it.hpMax}" style="width:64px">` : ''}
+      </div>`}
+      <div class="toolbar" style="margin:14px 0 0">
+        ${it.loc && it.loc.t === 'zone' ? invUI.chars.map(c => `<button class="small" data-take="${c.id}">🫳 Vzít si (${esc(c.name)})</button>`).join('') : ''}
+        ${it.loc && it.loc.t === 'grid' ? `<button class="small secondary" data-k="rot">⟳ Otočit</button>` : ''}
+        ${dm ? `<button class="small secondary" data-k="ident">${it.identified ? '🔒 Zrušit identifikaci' : '🔓 Identifikovat'}</button>` : ''}
+        ${(dm || it.broken) ? `<button class="small danger" data-k="del">Odstranit předmět</button>` : ''}
+        ${it.articleId ? `<a href="#/c/${state.campaign.id}/a/${it.articleId}"><button class="small ghost">📄 Článek předmětu</button></a>` : ''}
+      </div>
+      ${it.noDrop ? '<p class="muted" style="margin-top:10px">📌 Tento předmět nejde odhodit na zem.</p>' : ''}
+    </div>`;
+  const done = () => { closeRefPane(); invDrawBody(); };
+  el.querySelector('[data-k=close]').onclick = () => closeRefPane();
+  el.querySelectorAll('[data-take]').forEach(b => b.onclick = async () => {
+    if (await invTakeToChar(it, +b.dataset.take)) done();
+  });
+  const hpSet = async hp => {
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { hp } }); invDrawBody(); invDetailReload(it.id); }
+    catch (e) { invToast(e.message); }
+  };
+  const q = k => el.querySelector(`[data-k=${k}]`);
+  if (q('hpm')) q('hpm').onclick = () => hpSet(it.hp - 1);
+  if (q('hpp')) q('hpp').onclick = () => hpSet(it.hp + 1);
+  if (q('hpmax')) q('hpmax').onchange = async () => {
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { hpMax: parseInt(q('hpmax').value, 10) } }); invDrawBody(); invDetailReload(it.id); }
+    catch (e) { invToast(e.message); }
+  };
+  if (q('ident')) q('ident').onclick = async () => {
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'PUT', body: { identified: !it.identified } }); invDrawBody(); invDetailReload(it.id); }
+    catch (e) { invToast(e.message); }
+  };
+  if (q('rot')) q('rot').onclick = async () => {
+    try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to: it.loc, rot: it.rot ? 0 : 1 } }); done(); }
+    catch (e) { invToast(e.message); }
+  };
+  if (q('split')) q('split').onclick = async () => {
+    const n = parseInt(prompt(`Kolik kusů oddělit? (1–${it.qty - 1})`, '1'), 10);
+    if (!n) return;
+    // oddělená část jde na zem — do první zóny (odtud si ji rozeberou)
+    const z = invUI.zones[0];
+    if (!z) return invToast('Nejdřív musí DM založit zónu podlahy.');
+    try { await api(`/api/inv/instances/${it.id}/split`, { method: 'POST', body: { qty: n, to: { t: 'zone', zId: z.id } } }); done(); }
+    catch (e) { invToast(e.message); }
+  };
+  if (q('del')) q('del').onclick = async () => {
+    if (!await confirmDialog('Předmět bude nenávratně odstraněn.', { title: 'Odstranit předmět', ok: 'Odstranit', danger: true })) return;
+    try { await api(`/api/inv/instances/${it.id}`, { method: 'DELETE' }); done(); }
+    catch (e) { invToast(e.message); }
+  };
+}
+/** Po změně načte čerstvá data instance a překreslí detail. */
+async function invDetailReload(instId) {
+  // items se překreslily v invDrawBody — počkat na ně a znovu otevřít detail
+  setTimeout(() => { if (invUI.items.some(i => i.id === instId)) invDetail(instId); }, 150);
+}
+/** SSE zpráva o změně inventáře → překreslit, pokud je stránka otevřená. */
+let invPushTimer = null;
+function invOnPush() {
+  if (!location.hash.includes('/inventory')) return;
+  clearTimeout(invPushTimer);
+  invPushTimer = setTimeout(() => invDrawBody(), 200);
 }
 
 // ---------------------------------------------------------------- start

@@ -71,9 +71,11 @@ Plovoucí panel s místnostmi, doručování v reálném čase přes SSE. Zpráv
 
 Datum, účastníci, dvousloupcový **scénář jen pro DM**, zápis DM složený z bloků s viditelností a zápisy hráčů. Automatické ukládání každou minutu, Ctrl+S, varování při odchodu s neuloženými změnami.
 
-### Inventář
+### Grafický inventář
 
-Předměty jsou články v kategorii `Předměty` (váha, cena, vzácnost). DM je vkládá postavám do inventáře; ten vidí jen vlastník a DM. K předmětu se dají psát poznámky s viditelností „DM + hráč“ nebo „Pouze DM“.
+Mřížkový inventář ve stylu PC her. Postava má **nákres se sloty** (hlava, trup, ruce, opasek, prsteny…), kontejnery (batohy, brašny) mají **vlastní mřížky** s barevnými zónami dostupnosti (volná akce / akce / celé kolo), které si DM nakliká v editoru předmětu. Předměty se přetahují myší i prstem, tokeny jdou otáčet o 90°.
+
+Každý předmět existuje jako **instance** — konkrétní kus s vlastními životy (1–10, na 0 je rozbitý), stavem identifikace a pozicí. Neidentifikovaný kus ukazuje jen obecný název a veřejný popis; pravé jméno a tajný popis odhalí až DM identifikací. **Zóny podlahy** jsou společné odkládací plochy kampaně — předání předmětu jinému hráči jde přes ně, změny se všem projeví okamžitě (SSE) a deník přesunů zaznamenává, kdo co vzal a odložil.
 
 ### Import z D&D Beyond
 

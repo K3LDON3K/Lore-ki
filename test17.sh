@@ -17,7 +17,7 @@ req h17.jar POST /api/login '{"username":"hrac17","password":"heslo123"}' > /dev
 echo "== výchozí pořadí je kompletní =="
 req d17.jar GET /api/campaigns | python3 -c "
 import sys,json; d=json.load(sys.stdin); c=[x for x in d if x['name']=='Nav17'][0]
-exp=['campaigns','home','articles','sessions','settings']
+exp=['campaigns','home','articles','sessions','inventory','settings']
 assert c['navOrder']==exp, c['navOrder']
 print('✅ OK: výchozí navOrder =', c['navOrder'])"
 
@@ -26,10 +26,10 @@ X=$(req h17.jar PUT /api/campaigns/$CID/settings '{"navOrder":["settings","artic
 check_has "hráč dostane chybu" "$X" error
 
 echo "== DM uloží nové pořadí =="
-req d17.jar PUT /api/campaigns/$CID/settings '{"navOrder":["sessions","articles","home","campaigns","settings"]}' > /dev/null
+req d17.jar PUT /api/campaigns/$CID/settings '{"navOrder":["sessions","articles","home","campaigns","inventory","settings"]}' > /dev/null
 req d17.jar GET /api/campaigns | python3 -c "
 import sys,json; d=json.load(sys.stdin); c=[x for x in d if x['name']=='Nav17'][0]
-exp=['sessions','articles','home','campaigns','settings']
+exp=['sessions','articles','home','campaigns','inventory','settings']
 assert c['navOrder']==exp, c['navOrder']
 print('✅ OK: uloženo =', c['navOrder'])"
 
@@ -45,7 +45,7 @@ req d17.jar GET /api/campaigns | python3 -c "
 import sys,json; d=json.load(sys.stdin); c=[x for x in d if x['name']=='Nav17'][0]
 o=c['navOrder']
 assert o[0]=='settings', o
-assert sorted(o)==sorted(['campaigns','home','articles','sessions','settings']), o
+assert sorted(o)==sorted(['campaigns','home','articles','sessions','inventory','settings']), o
 print('✅ OK: doplněno na plný seznam =', o)"
 
 echo "== nesmysly se zahodí =="
@@ -54,7 +54,7 @@ req d17.jar GET /api/campaigns | python3 -c "
 import sys,json; d=json.load(sys.stdin); c=[x for x in d if x['name']=='Nav17'][0]
 o=c['navOrder']
 assert 'hack' not in o and '<script>' not in o, o
-assert len(o)==len(set(o))==5, o
+assert len(o)==len(set(o))==6, o
 assert o[0]=='articles', o
 print('✅ OK: neznámé klíče pryč, bez duplicit =', o)"
 X=$(req d17.jar PUT /api/campaigns/$CID/settings '{"navOrder":"neco"}')
@@ -66,12 +66,12 @@ req d17.jar GET /api/campaigns | python3 -c "
 import sys,json; d=json.load(sys.stdin); c=[x for x in d if x['name']=='Nav17'][0]
 o=c['navOrder']
 assert 'players' not in o and 'categories' not in o, o
-assert sorted(o)==sorted(['campaigns','home','articles','sessions','settings']), o
+assert sorted(o)==sorted(['campaigns','home','articles','sessions','inventory','settings']), o
 print('✅ OK: players/categories z pořadí pryč =', o)"
 
 echo "== uložení pořadí nesmí přepsat název/popis =="
 req d17.jar PUT /api/campaigns/$CID/settings '{"name":"Nav17","description":"Popisek"}' > /dev/null
-req d17.jar PUT /api/campaigns/$CID/settings '{"navOrder":["home","campaigns","articles","sessions","settings"]}' > /dev/null
+req d17.jar PUT /api/campaigns/$CID/settings '{"navOrder":["home","campaigns","articles","sessions","inventory","settings"]}' > /dev/null
 req d17.jar GET /api/campaigns | python3 -c "
 import sys,json; d=json.load(sys.stdin); c=[x for x in d if x['name']=='Nav17'][0]
 assert c['description']=='Popisek', c
