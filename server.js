@@ -1482,7 +1482,7 @@ route('GET', '/api/articles/:id', async (req, res, params, userId, query) => {
     item: a.item ? (viewer.isDM ? a.item : { ...a.item, secretText: undefined }) : null,
     charMeta: a.charMeta || null, // metadata hráčské postavy (rasa/třída/úroveň…)
     isHome: !!a.isHome, // domovský článek kampaně — nelze smazat
-    character: linkedChar ? { id: linkedChar.id, name: linkedChar.name, userId: linkedChar.userId } : null,
+    character: linkedChar ? { id: linkedChar.id, name: linkedChar.name, userId: linkedChar.userId, languages: linkedChar.languages || [] } : null,
     createdAt: a.createdAt, updatedAt: a.updatedAt,
     owned: !viewer.isDM && isArticleOwner(a.id, viewer.userId), // hráč vlastní článek své postavy
     blocks
@@ -1521,7 +1521,9 @@ route('PUT', '/api/articles/:id', async (req, res, params, userId, query) => {
   const viewer = userId && resolveViewer(userId, a.campaignId, query.viewAs);
   if (!viewer) return sendJSON(res, 403, { error: 'Nejste členem kampaně.' });
   const asDM = viewer.realDM && !parseInt(query.viewAs || 0, 10);
-  const asOwner = !asDM && isArticleOwner(a.id, userId);
+  // vlastnictví se hodnotí podle DIVÁKA — v náhledu „za hráče“ tedy podle hráče,
+  // jinak by DM v náhledu nemohl uložit článek postavy (viewer.userId = prohlížený hráč)
+  const asOwner = !asDM && isArticleOwner(a.id, viewer.userId);
   if (!asDM && !asOwner) return sendJSON(res, 403, { error: 'Nemáte oprávnění článek upravit.' });
 
   const body = await readJSONBody(req);

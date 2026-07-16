@@ -2630,35 +2630,48 @@ async function renderArticle(aid) {
   shell(`
     <div class="article-body">
       <div class="pagehead">
-        <h1>${esc(a.title)}</h1>
-        ${ownerMode ? `<span class="tag cat">Vaše postava</span>` : ''}
-        ${a.character ? `<span class="tag" title="Majitel postavy">🎭 hraje: ${esc((state.characters.find(c => c.id === a.character.id) || {}).username || '?')}</span>` : ''}
-        ${a.character ? ((state.characters.find(c => c.id === a.character.id) || {}).languages || []).map(id => {
+        <h1 style="flex:1; min-width:200px">${esc(a.title)}</h1>
+        <span class="art-actions">
+          ${editable ? `<button class="small secondary" id="editBtn">✏️ Celý editor</button>` : ''}
+          ${dm && !a.isHome ? `<button class="small danger" id="delBtn">🗑 Smazat</button>` : ''}
+        </span>
+      </div>
+      ${(() => { // metadata v logických skupinách: zařazení · postava · vlastnosti
+        const grp = (label, chips) => {
+          const c = chips.filter(Boolean);
+          return c.length ? `<span class="meta-grp"><span class="meta-grp-label">${label}</span>${c.join('')}</span>` : '';
+        };
+        const ch = a.character && (state.characters.find(c => c.id === a.character.id) || {});
+        const zarazeni = grp('Zařazení', [
+          a.category ? `<span class="tag cat">${catIcon(a.category)} ${esc(a.category)}</span>` : '',
+          a.isHome ? `<span class="tag cat">🏠 Domovský článek</span>` : '',
+          ...(a.tags || '').split(',').filter(t => t.trim()).map(t => `<span class="tag">#${esc(t.trim())}</span>`),
+          a.category === 'Jazyk' && a.langColor ? `<span class="tag" style="background:${esc(a.langColor)}; color:#fff">■ barva jazyka</span>` : ''
+        ]);
+        const postava = a.character ? grp('Postava', [
+          ownerMode ? `<span class="tag cat">✅ vaše postava</span>` : '',
+          `<span class="tag" title="Majitel postavy">🎭 hraje: ${esc(ch.username || '?')}</span>`,
+          ...(a.charMeta && a.category === 'Hráčské postavy' ? [
+            a.charMeta.race ? `<span class="tag">🧝 ${esc(a.charMeta.race)}</span>` : '',
+            a.charMeta.classes ? `<span class="tag">⚔️ ${esc(a.charMeta.classes)}</span>` : '',
+            a.charMeta.level ? `<span class="tag">Úroveň ${a.charMeta.level}</span>` : '',
+            a.charMeta.background ? `<span class="tag">📜 ${esc(a.charMeta.background)}</span>` : '',
+            a.charMeta.alignment ? `<span class="tag">☯ ${esc(a.charMeta.alignment)}</span>` : ''
+          ] : [])
+        ]) : '';
+        const jazyky = a.character ? grp('Jazyky', (a.character.languages || ch.languages || []).map(id => {
           const l = state.languages.find(x => x.id === id);
           return l ? `<span class="tag" title="Postava ovládá tento jazyk" style="color:${l.color}; text-decoration:underline">${esc(l.title)}</span>` : '';
-        }).join('') : ''}
-        ${a.category === 'Jazyk' && a.langColor ? `<span class="tag" style="background:${esc(a.langColor)}; color:#fff">■ barva jazyka</span>` : ''}
-        ${a.isHome ? `<span class="tag cat">🏠 Domovský článek</span>` : ''}
-        ${editable ? `<button class="small secondary" id="editBtn">✏️ Celý editor</button>` : ''}
-        ${dm && !a.isHome ? `<button class="small danger" id="delBtn">Smazat</button>` : ''}
-      </div>
-      <p class="muted" style="margin-top:-8px">
-        ${a.category ? `<span class="tag cat">${esc(a.category)}</span>` : ''}
-        ${(a.tags || '').split(',').filter(t => t.trim()).map(t => `<span class="tag">#${esc(t.trim())}</span>`).join('')}
-      </p>
-      ${a.charMeta && a.category === 'Hráčské postavy' ? `<div class="item-meta">
-        ${a.charMeta.race ? `<span class="tag">🧝 ${esc(a.charMeta.race)}</span>` : ''}
-        ${a.charMeta.classes ? `<span class="tag cat">⚔️ ${esc(a.charMeta.classes)}</span>` : ''}
-        ${a.charMeta.level ? `<span class="tag">Úroveň ${a.charMeta.level}</span>` : ''}
-        ${a.charMeta.background ? `<span class="tag">📜 ${esc(a.charMeta.background)}</span>` : ''}
-        ${a.charMeta.alignment ? `<span class="tag">☯ ${esc(a.charMeta.alignment)}</span>` : ''}
-      </div>` : ''}
+        })) : '';
+        const predmet = a.item && a.category === 'Předměty' ? grp('Předmět', [
+          a.item.rarity ? `<span class="tag inv-rarity" style="border-left:3px solid">◆ ${esc(a.item.rarity)}</span>` : '',
+          a.item.weight ? `<span class="tag">⚖️ ${a.item.weight} lb</span>` : '',
+          a.item.price ? `<span class="tag">💰 ${esc(a.item.price)}</span>` : ''
+        ]) : '';
+        const groups = [zarazeni, postava, jazyky, predmet].filter(Boolean);
+        return groups.length ? `<div class="art-meta">${groups.join('')}</div>` : '';
+      })()}
       ${a.description ? `<p class="muted" style="font-size:15px">${esc(a.description)}</p>` : ''}
-      ${a.item && a.category === 'Předměty' ? `<div class="item-meta">
-        ${a.item.rarity ? `<span class="tag inv-rarity" style="border-left:3px solid">◆ ${esc(a.item.rarity)}</span>` : ''}
-        ${a.item.weight ? `<span class="tag">⚖️ ${a.item.weight} lb</span>` : ''}
-        ${a.item.price ? `<span class="tag">💰 ${esc(a.item.price)}</span>` : ''}
-      </div>` : ''}
       ${(() => { // galerie: hlavní fotka (portrét) + náhledy obrázků označených „v náhledu“
         const ids = articleGalleryIds(a);
         if (!ids.length) return '';
@@ -3494,7 +3507,7 @@ async function renderEditor(aid) {
           <div style="flex:1; min-width:140px"><label style="margin-top:0">Přesvědčení</label><input id="cmAlignment" value="${esc((a.charMeta || {}).alignment || '')}"></div>
         </div>` : ''}
         ${a.character ? (() => {
-          const chLangs = ((state.characters.find(c => c.id === a.character.id) || {}).languages) || [];
+          const chLangs = a.character.languages || ((state.characters.find(c => c.id === a.character.id) || {}).languages) || [];
           if (!canEdit()) { // hráč jazyky NEMĚNÍ — jen vidí, co jeho postava ovládá
             return `<label>🌐 Jazyky postavy</label>
             <p class="muted" style="margin:0 0 6px">Jazyky postav nastavuje DM.</p>
@@ -3894,16 +3907,18 @@ async function renderEditor(aid) {
         });
         // vlastník článku hráčské postavy (nepovinné) — vytvoří/změní/odebere propojenou postavu
         if (a.category === 'Hráčské postavy' && canEdit()) {
-          const os = $app.querySelector('#cmOwner');
-          const newOwner = os && os.value ? parseInt(os.value, 10) : null;
-          if (newOwner !== ((a.character && a.character.userId) || null)) {
-            await api(`/api/articles/${saveId}/owner`, { method: 'POST', body: { userId: newOwner } });
+          if (ownerUserId !== ((a.character && a.character.userId) || null)) {
+            await api(`/api/articles/${saveId}/owner`, { method: 'POST', body: { userId: ownerUserId } });
           }
         }
         if (a.character && canEdit()) { // jazyky postav nastavuje pouze DM
+          const initial = (a.character.languages || ((state.characters.find(c => c.id === a.character.id) || {}).languages) || []).slice().sort();
           const languages = [...$app.querySelectorAll('.charLang:checked')]
             .filter(c => !c.disabled).map(c => parseInt(c.value, 10));
-          await api(`/api/characters/${a.character.id}`, { method: 'PUT', body: { languages } });
+          // posílat jen skutečnou změnu — jinak by starší otevřený formulář přepsal jazyky nastavené jinde
+          if (JSON.stringify(languages.slice().sort()) !== JSON.stringify(initial)) {
+            await api(`/api/characters/${a.character.id}`, { method: 'PUT', body: { languages } });
+          }
         }
         state.characters = await api(`/api/campaigns/${state.campaign.id}/characters`);
         location.hash = `#/c/${state.campaign.id}/a/${saveId}`;
@@ -3913,6 +3928,8 @@ async function renderEditor(aid) {
       const el = $app.querySelector('#' + id);
       el.oninput = () => { a[key] = el.value; };
     });
+    const ownSel = $app.querySelector('#cmOwner');
+    if (ownSel) ownSel.onchange = () => { ownerUserId = ownSel.value ? parseInt(ownSel.value, 10) : null; };
     const catSel = $app.querySelector('#eCat');
     if (catSel) catSel.onchange = async () => {
       if (catSel.value === '__new') {

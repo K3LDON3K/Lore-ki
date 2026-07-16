@@ -1241,3 +1241,17 @@ a.att:hover { border-color: var(--accent); }
   background: var(--panel2);
 }
 .rt-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* ---- hlavička článku: akce vpravo, metadata ve skupinách ---- */
+.art-actions { display: inline-flex; gap: 6px; margin-left: auto; align-self: flex-start; }
+.art-meta {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  margin: -4px 0 14px; padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+}
+.meta-grp { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.meta-grp-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px;
+  color: var(--muted); margin-right: 2px;
+}
+.meta-grp + .meta-grp { border-left: 1px solid var(--border); padding-left: 16px; }
