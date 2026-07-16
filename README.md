@@ -71,6 +71,8 @@ Jazyk je článek v kategorii `Jazyk` s unikátní barvou. Text označený jazyk
 
 Plovoucí panel s místnostmi, doručování v reálném čase přes SSE. Zprávy jdou psát libovolným jazykem kampaně a šeptat vybraným postavám — pro ostatní jsou tajné zprávy zcela neviditelné. DM vidí i šeptání mezi hráči (u zprávy je značka „+ DM“, ať o tom všichni vědí).
 
+Do zprávy jde přiložit **obrázek** (tlačítkem 📎 nebo vložením ze schránky Ctrl+V) a **odkaz na článek** (📄 s vyhledávačem). Odkaz se po kliknutí otevře v pravém referenčním panelu, odkud jde přejít na celý článek. Obrázek ze šeptané zprávy dostanou jen její adresáti a DM.
+
 ### Herní sezení
 
 Datum, účastníci, dvousloupcový **scénář jen pro DM**, zápis DM složený z bloků s viditelností a zápisy hráčů. Automatické ukládání každou minutu, Ctrl+S, varování při odchodu s neuloženými změnami.

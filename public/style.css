@@ -1157,3 +1157,12 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 /* štítek podané žádosti o prozrazení */
 .reveal-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .reveal-pending { font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* ---- chat: obrázky a odkazy na články ---- */
+.chat-img { display: block; max-width: 100%; max-height: 220px; border-radius: 10px; margin-top: 6px; cursor: zoom-in; }
+.chat-msg .bubble a.ref { font-weight: 600; }
+.chat-attach { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px dashed var(--border); border-radius: 10px; margin-bottom: 6px; }
+.chat-attach img { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; }
+.refpick-list { max-height: 320px; overflow: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.refpick-row { display: flex; gap: 8px; align-items: baseline; text-align: left; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+.refpick-row:hover { border-color: var(--accent); }

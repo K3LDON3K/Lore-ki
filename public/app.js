@@ -4034,11 +4034,17 @@ async function chatLoadNewMessages() {
   }
 }
 
+/** Text zprávy: escapovat, pak reference [[id|popisek]] proměnit v odkazy.
+    Odkaz má class="ref" — globální obsluha ho otevře v pravém panelu. */
+function chatTextHTML(raw) {
+  return esc(raw).replace(/\[\[(\d+)(?:\|([^\]]*))?\]\]/g, (_, id, label) =>
+    `<a class="ref" href="#/c/${state.campaign ? state.campaign.id : 0}/a/${id}">📄 ${label || 'článek'}</a>`);
+}
 function chatMsgHTML(m, readonly = false) {
   const t = new Date(m.createdAt).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   const text = m.lang
-    ? `<span class="lang-text" style="color:${m.lang.color}" title="${esc(m.lang.title)}">${esc(m.text)}</span>`
-    : esc(m.text);
+    ? `<span class="lang-text" style="color:${m.lang.color}" title="${esc(m.lang.title)}">${chatTextHTML(m.text)}</span>`
+    : chatTextHTML(m.text);
   return `<div class="chat-msg ${m.mine ? 'mine' : ''}">
     <div class="meta">
       <span class="who ${m.dmAuthor ? 'dm' : ''}">${m.dmAuthor ? '📖 ' : '🎭 '}${esc(m.author)}</span>
@@ -4047,7 +4053,7 @@ function chatMsgHTML(m, readonly = false) {
       ${m.lang ? `<span style="color:${m.lang.color}">◈ ${esc(m.lang.title)}</span>` : ''}
       ${canEdit() && !readonly ? `<a href="javascript:void 0" data-delmsg="${m.id}" class="muted" title="Smazat zprávu">✕</a>` : ''}
     </div>
-    <div class="bubble">${text}</div>
+    <div class="bubble">${m.text ? text : ''}${m.imageId ? `<img class="chat-img" src="${imgUrl(m.imageId)}" alt="" loading="lazy" data-chatimg="${m.imageId}" title="Kliknutím zvětšíte">` : ''}</div>
   </div>`;
 }
 
@@ -4097,9 +4103,12 @@ function chatRender() {
     <div class="chat-composer">
       <div data-k="status"></div>
       <div class="row1">
+        <button class="small ghost" data-k="attach" title="Přiložit obrázek (jde i vložit ze schránky Ctrl+V)">📎</button>
+        <button class="small ghost" data-k="refbtn" title="Vložit odkaz na článek">📄</button>
         <input type="text" data-k="text" placeholder="Napište zprávu…" maxlength="4000">
         <button data-k="send">➤</button>
       </div>
+      <input type="file" data-k="file" accept="image/*" style="display:none">
       <div class="opts" data-k="langchips"></div>
       <div class="opts" data-k="secretchips"></div>
     </div>`;
@@ -4165,21 +4174,89 @@ function chatRender() {
   };
   updateComposer();
 
+  // ---------- obrázek: příloha souborem nebo vložením ze schránky
+  const drawAttach = () => {
+    const s = panel.querySelector('[data-k=status]');
+    let box = s.querySelector('.chat-attach');
+    if (box) box.remove();
+    if (!chat.attach) return;
+    box = h(`<div class="chat-attach"><img src="${imgUrl(chat.attach)}" alt=""><span class="muted">obrázek připraven k odeslání</span><button class="small ghost" data-k="attdel" title="Odebrat obrázek">✕</button></div>`).firstElementChild;
+    s.appendChild(box);
+    box.querySelector('[data-k=attdel]').onclick = () => { chat.attach = null; drawAttach(); };
+  };
+  const attachFile = async (file) => {
+    if (!file || !/^image\//.test(file.type)) return invToast('Vložit jde jen obrázek.');
+    try { const up = await uploadImage(file, file.name || 'obrazek.png'); chat.attach = up.id; drawAttach(); }
+    catch (e) { invToast(e.message); }
+  };
+  const fileInp = panel.querySelector('[data-k=file]');
+  panel.querySelector('[data-k=attach]').onclick = () => fileInp.click();
+  fileInp.onchange = () => { attachFile(fileInp.files[0]); fileInp.value = ''; };
+  input.addEventListener('paste', e => {
+    const it = [...(e.clipboardData ? e.clipboardData.items : [])].find(x => x.type.startsWith('image/'));
+    if (it) { e.preventDefault(); attachFile(it.getAsFile()); }
+  });
+  drawAttach(); // po překreslení místnosti nezapomenout na rozpracovanou přílohu
+
+  // ---------- reference na článek: vyhledávač → [[id|název]] do textu
+  panel.querySelector('[data-k=refbtn]').onclick = () => chatRefPicker(input);
+
+  // klik na obrázek ve zprávě = zvětšení
+  panel.querySelectorAll('[data-chatimg]').forEach(im => im.onclick = () => openAttachment(+im.dataset.chatimg, 'Obrázek z chatu', 'image/*'));
+
   const send = async () => {
     const text = input.value.trim();
-    if (!text) return;
+    if (!text && !chat.attach) return;
     const secretTo = chat.secretChars.length ? chat.secretChars : ((!dm && chat.secretDM) ? 'dm' : null);
     try {
       await api(`/api/chat/rooms/${chat.roomId}/messages`, {
-        method: 'POST', body: { text, langId: chat.langId, secretTo }
+        method: 'POST', body: { text, langId: chat.langId, secretTo, imageId: chat.attach || undefined }
       });
-      input.value = '';
+      input.value = ''; chat.attach = null; drawAttach();
       chatLoadNewMessages();
     } catch (e) { alert(e.message); }
   };
   panel.querySelector('[data-k=send]').onclick = send;
   input.onkeydown = e => { if (e.key === 'Enter') send(); };
   input.focus();
+}
+
+/** Výběr článku do chatu: hledání se stejným pořadím jako celoaplikační vyhledávání. */
+function chatRefPicker(input) {
+  const overlay = h(`<div class="modal-overlay"><div class="modal confirm-modal" role="dialog" aria-modal="true">
+    <div class="confirm-head"><span class="confirm-icon">📄</span><h3>Odkaz na článek</h3></div>
+    <input data-k="q" placeholder="🔍 Hledat článek…" style="width:100%; margin-bottom:10px">
+    <div class="refpick-list" data-k="list"><p class="muted">Začněte psát…</p></div>
+    <div class="confirm-actions"><button class="secondary" data-k="no">Zrušit</button></div>
+  </div></div>`).firstElementChild;
+  document.body.appendChild(overlay);
+  const done = () => overlay.remove();
+  overlay.onclick = e => { if (e.target === overlay) done(); };
+  overlay.querySelector('[data-k=no]').onclick = done;
+  const q = overlay.querySelector('[data-k=q]');
+  const list = overlay.querySelector('[data-k=list]');
+  let tm = null;
+  q.oninput = () => {
+    clearTimeout(tm);
+    tm = setTimeout(async () => {
+      const v = q.value.trim();
+      if (!v) { list.innerHTML = '<p class="muted">Začněte psát…</p>'; return; }
+      let rows = [];
+      try { rows = await api(`/api/campaigns/${state.campaign.id}/search?q=${encodeURIComponent(v)}`); } catch { }
+      list.innerHTML = rows.length ? rows.slice(0, 12).map(r => `
+        <button class="refpick-row" data-ref="${r.articleId}" data-title="${esc(r.title)}">
+          ${catIcon(r.category)} <b>${esc(r.title)}</b> ${r.category ? `<span class="muted">${esc(r.category)}</span>` : ''}
+        </button>`).join('') : '<p class="muted">Nic nenalezeno.</p>';
+      list.querySelectorAll('[data-ref]').forEach(b => b.onclick = () => {
+        const tag = `[[${b.dataset.ref}|${b.dataset.title}]]`;
+        const pos = input.selectionStart ?? input.value.length;
+        input.value = input.value.slice(0, pos) + tag + input.value.slice(input.selectionEnd ?? pos);
+        done(); input.focus();
+        const np = pos + tag.length; input.setSelectionRange(np, np);
+      });
+    }, 250);
+  };
+  setTimeout(() => q.focus(), 10);
 }
 
 // jemný zvuk příchozí zprávy (WebAudio, bez souboru)

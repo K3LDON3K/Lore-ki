@@ -901,7 +901,7 @@ route('POST', '/api/admin/import', async (req, res) => {
   });
   (backup.templates || []).forEach(t => db.templates.push({ ...t, id: remap(t.id), campaignId: camp.id }));
   (backup.chatRooms || []).forEach(r => db.chatRooms.push({ ...r, id: remap(r.id), campaignId: camp.id, characters: (r.characters || []).map(remap), sessionIds: (r.sessionIds || []).map(remap) }));
-  (backup.chatMessages || []).forEach(m => db.chatMessages.push({ ...m, id: remap(m.id), roomId: remap(m.roomId), authorId: mu(m.authorId), authorCharId: m.authorCharId ? remap(m.authorCharId) : null, langId: m.langId ? remap(m.langId) : null, secretTo: Array.isArray(m.secretTo) ? m.secretTo.map(remap) : m.secretTo }));
+  (backup.chatMessages || []).forEach(m => db.chatMessages.push({ ...m, id: remap(m.id), roomId: remap(m.roomId), authorId: mu(m.authorId), authorCharId: m.authorCharId ? remap(m.authorCharId) : null, langId: m.langId ? remap(m.langId) : null, secretTo: Array.isArray(m.secretTo) ? m.secretTo.map(remap) : m.secretTo, imageId: m.imageId ? remap(m.imageId) : undefined }));
   save();
   sendJSON(res, 200, { ok: true, campaignId: camp.id, name: camp.name });
 });
@@ -2619,6 +2619,7 @@ function chatMsgOut(m, viewer, campaignId) {
     id: m.id, createdAt: m.createdAt,
     author: authorCh ? authorCh.name : 'Vypravěč (DM)',
     dmAuthor: !m.authorCharId, mine, text,
+    ...(m.imageId ? { imageId: m.imageId } : {}),
     ...(lang ? { lang: { title: known ? lang.title : 'Neznámá řeč', color: lang.langColor || '#9aa0a6' } } : {}),
     ...(secret ? { secret } : {}) // pole existuje JEN pro zúčastněné — ostatním nic neprozradí
   };
@@ -2719,7 +2720,14 @@ route('POST', '/api/chat/rooms/:id/messages', async (req, res, params, userId, q
   const authorCharId = chatActiveChar(viewer, r.campaignId); // emulace: DM píše ZA postavu
   const body = await readJSONBody(req);
   const text = String(body.text || '').trim().slice(0, 4000);
-  if (!text) return sendJSON(res, 400, { error: 'Prázdná zpráva.' });
+  // volitelný obrázek — musí patřit této kampani (jinak by šlo protahovat cizí obrázky)
+  const imageId = parseInt(body.imageId, 10) || null;
+  let img = null;
+  if (imageId) {
+    img = db.images.find(i => i.id === imageId && i.campaignId === r.campaignId);
+    if (!img || !/^image\//.test(img.mime || '')) return sendJSON(res, 400, { error: 'Obrázek nenalezen.' });
+  }
+  if (!text && !img) return sendJSON(res, 400, { error: 'Prázdná zpráva.' });
   // tajné adresování: 'dm' = jen vypravěč; pole = vybrané postavy z místnosti.
   // Šeptat postavám smí DM i hráč; DM vidí veškeré šeptání (viz chatMsgVisible) — je to jeho stůl.
   let secretTo = null;
@@ -2741,7 +2749,8 @@ route('POST', '/api/chat/rooms/:id/messages', async (req, res, params, userId, q
   }
   const m = {
     id: nextId(), roomId: r.id, authorId: viewer.userId, authorCharId,
-    langId, secretTo, text, createdAt: new Date().toISOString()
+    langId, secretTo, text, createdAt: new Date().toISOString(),
+    ...(img ? { imageId } : {})
   };
   db.chatMessages.push(m);
   // autorovi se jeho zpráva rovnou počítá jako přečtená
@@ -2876,7 +2885,13 @@ route('GET', '/api/images/:id', async (req, res, params, userId, query) => {
     // token / velký obrázek předmětu — tokeny leží v zónách viditelných všem členům
     const asToken = db.articles.some(a => a.campaignId === img.campaignId && a.item &&
       a.item.tokenImageId === img.id);
-    if (!inBlock && !asCover && !asToken) { res.writeHead(404); return res.end(); }
+    // obrázek poslaný do chatu — jen pro toho, kdo danou zprávu smí vidět (šeptání zůstává tajné)
+    const inChat = db.chatMessages.some(m => {
+      if (m.imageId !== img.id) return false;
+      const room = db.chatRooms.find(x => x.id === m.roomId);
+      return room && room.campaignId === img.campaignId && roomForViewer(room, viewer) && chatMsgVisible(m, viewer, room.campaignId);
+    });
+    if (!inBlock && !asCover && !asToken && !inChat) { res.writeHead(404); return res.end(); }
   }
   const headers = { 'Content-Type': img.mime, 'Cache-Control': 'private, max-age=3600' };
   if (query.download) { // stažení přílohy s původním názvem
