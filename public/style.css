@@ -1,0 +1,835 @@
+/* ==========================================================================
+   DnD Wiki — moderní, vzdušný interface (světlý + tmavý režim)
+   ========================================================================== */
+:root {
+  --bg: #f7f6fb;
+  --panel: #ffffff;
+  --panel2: #f1effa;
+  --border: #e6e2f0;
+  --text: #28233c;
+  --muted: #837c9c;
+  --accent: #6d5ae6;
+  --accent-soft: #eeebfd;
+  --gold: #b8862d;
+  --gold-soft: #fdf5e4;
+  --danger: #d64550;
+  --ok: #2e9e5b;
+  --ok-soft: #e3f6eb;
+  --warn: #c07f16;
+  --warn-soft: #fdf2dc;
+  --radius: 14px;
+  --shadow: 0 1px 3px rgba(40, 35, 70, .06), 0 8px 24px rgba(40, 35, 70, .05);
+  --shadow-lg: 0 4px 12px rgba(40, 35, 70, .1), 0 16px 48px rgba(40, 35, 70, .12);
+}
+[data-theme="dark"] {
+  --bg: #16141f;
+  --panel: #201d2e;
+  --panel2: #2a2639;
+  --border: #383350;
+  --text: #eae6f4;
+  --muted: #9d95b8;
+  --accent: #9d8cff;
+  --accent-soft: #322c50;
+  --gold: #d9b45e;
+  --gold-soft: #35301f;
+  --danger: #ef6b74;
+  --ok: #4ecb82;
+  --ok-soft: #1e3a2b;
+  --warn: #e0a33c;
+  --warn-soft: #3a301e;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, .4), 0 16px 48px rgba(0, 0, 0, .4);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.65;
+  transition: background .25s, color .25s;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3, h4 { line-height: 1.25; font-weight: 700; letter-spacing: -.01em; }
+
+button {
+  background: var(--accent); color: #fff; border: 0;
+  padding: 9px 18px; border-radius: 10px; cursor: pointer;
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  transition: transform .12s, box-shadow .12s, filter .12s;
+}
+button:hover { filter: brightness(1.08); box-shadow: var(--shadow); transform: translateY(-1px); }
+button:active { transform: translateY(0); }
+button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+button.ghost { background: transparent; color: var(--muted); border: 0; box-shadow: none; }
+button.ghost:hover { color: var(--accent); background: var(--accent-soft); box-shadow: none; }
+button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+button.danger:hover { background: var(--danger); color: #fff; }
+button.small { padding: 5px 12px; font-size: 12.5px; border-radius: 8px; }
+button.icon { padding: 7px 10px; line-height: 1; }
+
+input, select, textarea {
+  background: var(--panel); color: var(--text);
+  border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 9px 12px; font-size: 14px; font-family: inherit;
+  width: 100%; transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus, textarea:focus, .rich:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+textarea { resize: vertical; min-height: 70px; }
+label { font-size: 12.5px; font-weight: 600; color: var(--muted); display: block; margin: 12px 0 5px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* ---------------- topbar ---------------- */
+header.topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px; background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 50;
+  box-shadow: var(--shadow);
+}
+.logo { font-weight: 800; font-size: 17px; color: var(--text); white-space: nowrap; text-decoration: none !important; line-height: 1.1; display: inline-flex; align-items: center; gap: 8px; }
+.logo .dice { color: var(--accent); }
+.logo .logo-sub { display: block; font-size: 9.5px; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
+.logo-img { height: 38px; width: 38px; border-radius: 50%; object-fit: cover; box-shadow: var(--shadow); }
+.auth-logo { height: 110px; width: 110px; border-radius: 50%; object-fit: cover; box-shadow: var(--shadow-lg); }
+
+/* ---------------- cizí jazyk ---------------- */
+.lang { text-decoration: underline; text-underline-offset: 3px; font-weight: 500; cursor: help; }
+
+/* ---------------- spoiler ---------------- */
+.spoiler {
+  background: var(--text); color: var(--text);
+  border-radius: 4px; padding: 0 4px; cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.spoiler.revealed { background: var(--warn-soft); color: var(--text); }
+.rich .spoiler { background: repeating-linear-gradient(45deg, var(--muted), var(--muted) 4px, var(--text) 4px, var(--text) 8px); color: #fff; }
+
+/* ---------------- více náhledů v seznamu (vpravo) ---------------- */
+.thumb-strip { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; max-width: 240px; margin-left: auto; justify-content: flex-end; }
+.thumb-strip .article-thumb { width: 64px; height: 64px; }
+
+/* obrázky vložené přímo do textu */
+.rich img, .seg img, .seg-body img { max-width: 100%; border-radius: 8px; vertical-align: middle; }
+.rich img { cursor: pointer; }
+.img-resize {
+  position: fixed; z-index: 130; width: 16px; height: 16px;
+  background: var(--accent); border: 2px solid #fff; border-radius: 4px;
+  cursor: nwse-resize; box-shadow: var(--shadow); touch-action: none;
+}
+
+/* ---------------- sezení ---------------- */
+.session-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .session-cols { grid-template-columns: 1fr; } }
+.session-seg { margin-bottom: 12px; }
+.session-seg > summary {
+  cursor: pointer; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 18px; font-weight: 700; font-size: 15px;
+  box-shadow: var(--shadow); list-style: none; display: flex; align-items: center; gap: 10px;
+}
+.session-seg > summary::before { content: "▸"; color: var(--accent); transition: transform .15s; }
+.session-seg[open] > summary::before { transform: rotate(90deg); }
+.session-seg .seg-body { padding: 14px 18px; background: var(--panel); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 12px 12px; margin-top: -6px; }
+.topbar .grow { flex: 1; }
+/* vyhledávání s našeptávačem — rozměry drží obal, aby se dala nabídka ukotvit pod pole */
+.searchwrap { position: relative; flex: 1; max-width: 340px; min-width: 140px; }
+.topbar .search { width: 100%; border-radius: 20px; background: var(--bg); }
+.searchdrop {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 80;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow-lg);
+  padding: 5px; max-height: 60vh; overflow-y: auto;
+  animation: tipIn .12s ease-out;
+}
+.sd-item {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+}
+.sd-item:hover, .sd-item.sel { background: var(--accent-soft); }
+.sd-ico { font-size: 15px; line-height: 1.3; flex: none; }
+.sd-txt { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sd-title { font-weight: 700; font-size: 13.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sd-item.sel .sd-title { color: var(--accent); }
+.sd-snip {
+  font-size: 11.5px; color: var(--muted); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sd-empty { padding: 12px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+.sd-all {
+  border-top: 1px solid var(--border); margin-top: 4px; padding: 9px 10px 6px;
+  font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; border-radius: 0 0 8px 8px;
+}
+.sd-all:hover { color: var(--accent); }
+/* všechna tlačítka v liště mají stejnou výšku (32 px) */
+.navbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; padding: 0 10px; box-sizing: border-box;
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 9px; box-shadow: none;
+}
+.navbtn:hover { color: var(--accent); border-color: var(--accent); box-shadow: none; }
+#menuToggle { display: none; }
+
+/* ---------------- pravý roh lišty: jednotná velikost ---------------- */
+.topbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 10px; box-sizing: border-box;
+  background: transparent; border: 1px solid var(--border); border-radius: 9px;
+  color: var(--muted); font-size: 13px; font-weight: 600;
+  white-space: nowrap; box-shadow: none; cursor: pointer;
+  text-decoration: none !important;
+}
+.topbtn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); box-shadow: none; transform: none; }
+/* čtvercová ikonová varianta (?) — stejná výška jako ostatní */
+.topbtn.icon { width: 32px; padding: 0; justify-content: center; font-size: 15px; font-weight: 800; }
+/* počet online: klidná tečka + číslo, žádné emoji */
+.topbtn.online .dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: #2e9e5b; box-shadow: 0 0 0 3px rgba(46, 158, 91, .2);
+}
+.topbtn.online.nobody .dot { background: var(--muted); box-shadow: none; opacity: .5; }
+.topbtn.online { font-variant-numeric: tabular-nums; }
+/* jméno uživatele s iniciálou a šipkou */
+.topbtn.user { padding-left: 4px; }
+.topbtn.user .avatar {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 24px; height: 24px; border-radius: 7px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 11.5px; font-weight: 800;
+}
+.topbtn.user .uname { color: var(--text); max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+button.topbtn.user:hover .uname { color: var(--accent); }
+/* v administraci je jméno jen popiska, ne tlačítko */
+span.topbtn.user:hover { color: var(--muted); border-color: var(--border); background: transparent; }
+.topbtn.user .caret { font-size: 9px; opacity: .6; }
+@media (max-width: 560px) { .topbtn.user .uname { display: none; } }
+
+/* ---------------- záložky (nastavení kampaně) ---------------- */
+.tabbar {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin: -4px 0 18px;
+}
+.tab {
+  padding: 9px 14px; border-radius: 10px 10px 0 0; color: var(--muted);
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+  border: 1px solid transparent; border-bottom: none; margin-bottom: -1px;
+}
+.tab:hover { color: var(--accent); background: var(--accent-soft); text-decoration: none; }
+.tab.active {
+  color: var(--accent); background: var(--panel);
+  border-color: var(--border); border-bottom: 1px solid var(--panel);
+}
+
+/* ---------------- pořadí navigace (nastavení kampaně) ---------------- */
+.navorder { display: flex; flex-direction: column; gap: 6px; }
+.navorder-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px;
+}
+.navorder-grip { color: var(--muted); font-size: 12px; font-weight: 700; min-width: 18px; }
+.navorder-label { font-weight: 600; font-size: 14px; }
+.navorder-row button { padding: 2px 8px; }
+.navorder-row button[disabled] { opacity: .3; pointer-events: none; }
+
+/* ---------------- proklikávací cesta (breadcrumbs) — vlastní pruh pod lištou ---------------- */
+.crumbbar {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 7px 20px; font-size: 13px;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.crumb {
+  color: var(--muted); border-radius: 7px; padding: 2px 6px;
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+a.crumb:hover { color: var(--accent); background: var(--accent-soft); text-decoration: none; }
+.crumb.cur { color: var(--text); font-weight: 700; }
+.crumb-sep { color: var(--border); flex: none; padding: 0 2px; }
+@media (max-width: 860px) { .crumbbar { padding: 6px 14px; } }
+
+/* ---------------- view-as banner ---------------- */
+.viewas-banner {
+  background: linear-gradient(90deg, var(--gold), #d8a94a); color: #241a05;
+  padding: 8px 20px; font-size: 13.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  position: sticky; top: 57px; z-index: 45;
+}
+
+/* ---------------- layout ---------------- */
+.layout { display: flex; align-items: flex-start; max-width: 1280px; margin: 0 auto; transition: max-width .2s ease; }
+/* otevřený panel reference → stránka se roztáhne na tři sloupce (menu | obsah | reference) */
+.layout.refpane-open { max-width: 1760px; }
+aside.sidebar {
+  width: 250px; flex-shrink: 0;
+  position: sticky; top: 76px;
+  max-height: calc(100vh - 96px); overflow-y: auto;
+  padding: 20px 14px 20px 20px;
+}
+aside.sidebar h4 {
+  margin: 18px 0 8px; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--muted);
+}
+aside.sidebar h4:first-child { margin-top: 0; }
+.catlink {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px; color: var(--text);
+  font-size: 14px; margin-bottom: 2px; transition: background .12s;
+}
+.catlink:hover { background: var(--panel); text-decoration: none; box-shadow: var(--shadow); }
+.catlink.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.catlink .count {
+  margin-left: auto; font-size: 11.5px; color: var(--muted);
+  background: var(--panel2); border-radius: 12px; padding: 1px 8px;
+}
+main.content { flex: 1; padding: 28px 32px 64px; min-width: 0; }
+
+@media (max-width: 860px) {
+  #menuToggle { display: inline-block; }
+  aside.sidebar {
+    position: fixed; left: 0; top: 57px; bottom: 0; z-index: 60;
+    background: var(--panel); box-shadow: var(--shadow-lg);
+    transform: translateX(-105%); transition: transform .22s ease;
+    max-height: none; border-right: 1px solid var(--border);
+  }
+  .layout.drawer-open aside.sidebar { transform: translateX(0); }
+  main.content { padding: 20px 16px 48px; }
+}
+
+/* ---------------- cards & article list ---------------- */
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 22px; margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.card h3 { margin: 0 0 4px; font-size: 16.5px; }
+.article-row {
+  display: flex; gap: 16px; align-items: center;
+  transition: transform .12s, box-shadow .12s; cursor: pointer;
+}
+.article-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.article-thumb {
+  width: 72px; height: 72px; border-radius: 12px; object-fit: cover;
+  flex-shrink: 0; background: var(--panel2);
+}
+.article-thumb.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; color: var(--muted);
+}
+.muted { color: var(--muted); font-size: 13px; }
+.tag {
+  display: inline-block; background: var(--panel2); border-radius: 20px;
+  padding: 2px 11px; font-size: 12px; margin: 2px 5px 2px 0; color: var(--muted);
+}
+.tag.cat { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* ---------------- article view ---------------- */
+.article-body h1 { font-size: 30px; margin: 0; }
+.article-body h2, .article-body h3, .article-body h4 { margin-top: 28px; }
+.article-body p { margin: 12px 0; }
+.block-quote {
+  border-left: 3px solid var(--accent); margin: 16px 0; padding: 8px 18px;
+  color: var(--muted); font-style: italic; background: var(--panel); border-radius: 0 10px 10px 0;
+}
+.block-alert {
+  background: var(--warn-soft); border: 1px solid var(--warn);
+  border-radius: 12px; padding: 12px 16px; margin: 16px 0;
+}
+.block-dmnote {
+  background: var(--accent-soft); border: 1.5px dashed var(--accent);
+  border-radius: 12px; padding: 12px 16px; margin: 16px 0; font-size: 14px;
+}
+.block-dmnote::before { content: "🔒 Poznámka DM"; display: block; font-size: 11px; color: var(--accent); margin-bottom: 4px; font-weight: 700; letter-spacing: .04em; }
+.block-image { margin: 18px 0; }
+.block-image img { border-radius: 14px; box-shadow: var(--shadow); display: block; max-width: 100%; }
+.block-image .caption { font-size: 13px; color: var(--muted); margin-top: 8px; }
+hr.block-divider { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+a.ref {
+  background: var(--accent-soft); border-radius: 6px; padding: 1px 6px;
+  font-weight: 600; white-space: nowrap;
+}
+.cover img { width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); box-shadow: var(--shadow); }
+
+.vis-badge {
+  display: inline-block; font-size: 10.5px; font-weight: 700;
+  border-radius: 6px; padding: 1px 8px; margin-left: 8px; vertical-align: middle;
+  letter-spacing: .03em;
+}
+.vis-all { background: var(--ok-soft); color: var(--ok); }
+.vis-dm { background: var(--accent-soft); color: var(--accent); }
+.vis-custom { background: var(--gold-soft); color: var(--gold); }
+
+/* ---------------- notes ---------------- */
+.note {
+  background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--gold);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; box-shadow: var(--shadow);
+}
+.note .meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.note .author { font-weight: 700; font-size: 13.5px; }
+.badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 8px; }
+.badge.pending { background: var(--warn-soft); color: var(--warn); }
+.badge.approved { background: var(--ok-soft); color: var(--ok); }
+
+/* ---------------- editor ---------------- */
+.editor-block {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.editor-block .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.editor-block select { width: auto; }
+.blocktype { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.rich {
+  background: var(--panel); border: 1.5px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; min-height: 46px; font-size: 15px; line-height: 1.6;
+}
+.rt-toolbar { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.rt-toolbar button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  padding: 4px 10px; font-size: 13px; border-radius: 7px; box-shadow: none;
+}
+.rt-toolbar button:hover { border-color: var(--accent); color: var(--accent); transform: none; }
+.rt-toolbar select { padding: 4px 8px; font-size: 12.5px; border-radius: 7px; width: auto; }
+.rt-toolbar input[type=color] { width: 30px; height: 28px; padding: 2px; border-radius: 7px; cursor: pointer; }
+.vischeck { display: inline-flex; align-items: center; gap: 5px; margin: 2px 12px 2px 0; font-size: 13.5px; }
+.vischeck input { width: auto; }
+
+/* ---- toggle „pilulky" pro výběr postav / příjemců — shodný vzhled s chipy v chatu ---- */
+.pick-group { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin: 6px 0 4px; }
+.pick-toggle {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+  margin: 0; text-transform: none; letter-spacing: normal;
+  background: var(--panel2); border: 1.5px solid var(--border); color: var(--muted);
+  border-radius: 14px; padding: 4px 12px; font-size: 12.5px; font-weight: 600;
+}
+.pick-toggle input { display: none; }
+.pick-toggle .muted { font-size: 11px; font-weight: 500; text-transform: none; }
+.pick-toggle:hover { filter: brightness(1.12); }
+.pick-toggle.on { background: var(--gold); color: #241a05; border-color: var(--gold); }
+.pick-toggle.on .muted { color: #241a05; opacity: .7; }
+.pick-toggle.is-disabled { opacity: .65; cursor: default; }
+/* jazykové pilulky si drží barvu jazyka (jako jazykové chipy v chatu) */
+.pick-group.pick-lang .pick-toggle.on {
+  background: transparent; color: var(--pc); border-color: var(--pc);
+  text-decoration: underline; text-underline-offset: 2px;
+  box-shadow: 0 0 0 1px var(--pc) inset;
+}
+.pick-group.pick-lang .pick-toggle.on .muted { color: var(--pc); }
+.pick-all {
+  background: transparent; border: 1.5px dashed var(--border); color: var(--muted);
+  border-radius: 14px; padding: 4px 12px; font-size: 12px; font-weight: 700;
+  box-shadow: none; cursor: pointer; text-transform: none; letter-spacing: normal;
+}
+.pick-all:hover { border-color: var(--gold); color: var(--gold); transform: none; box-shadow: none; }
+.toolbar { display: flex; gap: 10px; margin: 18px 0; flex-wrap: wrap; align-items: center; }
+
+/* ---------------- segmenty článku — každý blok jako samostatná bublina ---------------- */
+.seg {
+  position: relative;
+  padding: 14px 110px 14px 18px;
+  margin: 0 0 4px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--panel2);
+  box-shadow: var(--shadow);
+  transition: border-color .15s, box-shadow .15s, transform .12s;
+}
+.seg:hover { border-left-color: var(--accent); box-shadow: var(--shadow-lg); }
+.seg.no-tools { padding-right: 18px; margin-bottom: 10px; }
+.seg > :first-child { margin-top: 0 !important; }
+.seg > :last-child { margin-bottom: 0 !important; }
+.seg-tools {
+  position: absolute; top: 6px; right: 8px;
+  display: flex; gap: 3px; opacity: 0; transition: opacity .15s;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 3px; box-shadow: var(--shadow);
+}
+.seg:hover .seg-tools, .seg:focus-within .seg-tools { opacity: 1; }
+.seg-tools button {
+  background: transparent; color: var(--muted); border: 0;
+  padding: 3px 8px; font-size: 13px; border-radius: 7px; box-shadow: none;
+}
+.seg-tools button:hover { background: var(--accent-soft); color: var(--accent); transform: none; }
+.seg-add {
+  display: flex; align-items: center; gap: 8px; height: 24px;
+  margin: 2px 0; opacity: .35; transition: opacity .15s; cursor: pointer;
+}
+.seg-add:hover { opacity: 1; }
+.seg-add::before, .seg-add::after { content: ""; flex: 1; border-top: 1.5px dashed var(--accent); }
+.seg-add span {
+  background: var(--accent); color: #fff; border-radius: 50%;
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; line-height: 1;
+  box-shadow: var(--shadow);
+}
+.inline-editor { margin: 8px 0; }
+@media (max-width: 860px) {
+  .seg { padding: 12px 14px 38px; }
+  .seg-tools { opacity: 1; top: auto; bottom: 6px; }
+  .seg-add { opacity: .5; }
+}
+
+/* ---------------- náhledová bublina reference ---------------- */
+.refpreview {
+  position: fixed; z-index: 120; max-width: 340px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow-lg); padding: 14px 16px;
+  font-size: 13.5px; line-height: 1.5; pointer-events: none;
+  animation: tipIn .12s ease-out;
+}
+@keyframes tipIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.refpreview .t { font-weight: 700; font-size: 14.5px; margin-bottom: 2px; }
+.refpreview .locked { color: var(--muted); font-weight: 600; }
+.refpreview img { width: 100%; max-height: 110px; object-fit: cover; border-radius: 8px; margin-top: 8px; }
+
+/* ---------------- boční panel reference (třetí sloupec) ---------------- */
+aside.refpane {
+  width: 430px; flex-shrink: 0;
+  position: sticky; top: 76px;
+  height: calc(100vh - 96px);
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow-lg);
+  margin: 20px 20px 20px 0; overflow: hidden;
+  animation: refPaneIn .22s ease-out;
+}
+@keyframes refPaneIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+.refpane-head {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 10px 12px; background: var(--panel2); border-bottom: 1px solid var(--border);
+}
+.refpane-body { flex: 1; overflow-y: auto; padding: 18px 20px 32px; }
+/* přebíjí .article-body h2 (margin-top: 28px) — titulek musí sedět nahoře */
+.refpane-body h2.refpane-title { margin: 0 0 8px; font-size: 21px; }
+.refpane-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.refpane-cover { width: 100%; border-radius: 10px; margin: 8px 0 12px; }
+.refpane-body img { max-width: 100%; }
+
+/* užší okna: panel překryje obsah zprava místo třetího sloupce */
+@media (max-width: 1180px) {
+  aside.refpane {
+    position: fixed; top: 57px; right: 0; bottom: 0; z-index: 70;
+    height: auto; width: min(430px, 100vw); margin: 0; border-radius: 0;
+    border-top: none; border-right: none; border-bottom: none;
+  }
+}
+
+/* ---------------- obrázek v textu označený „zobrazit v náhledech“ ---------------- */
+/* v editoru: zlatý rámeček přímo u obrázku (štítek by se stal součástí textu) */
+.rich img[data-preview="1"] { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
+/* v článku: rámeček + drobný štítek — vidí jen ten, kdo článek edituje */
+.imgprev { position: relative; display: inline-block; max-width: 100%; }
+.imgprev img { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
+/* jen hvězdička — u malých obrázků by popisek zabral půl obrázku (vysvětlení je v tooltipu) */
+.imgprev-tag {
+  position: absolute; left: 5px; bottom: 5px;
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--gold); color: #241a05;
+  font-size: 11px; line-height: 1; cursor: help;
+  box-shadow: var(--shadow);
+}
+
+/* ---------------- paleta barev textu ---------------- */
+.colorgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 8px; }
+.colorswatch {
+  width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border);
+  cursor: pointer; padding: 0; box-shadow: none; position: relative;
+}
+.colorswatch:hover { transform: scale(1.12); box-shadow: var(--shadow); }
+.colorcustom { display: flex; align-items: center; justify-content: center; font-size: 13px; background: var(--panel2); overflow: hidden; }
+.colorcustom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.colorclear {
+  display: flex; width: 100%; align-items: center; gap: 8px; background: var(--panel2);
+  color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 12px; font-weight: 600; font-size: 13px; box-shadow: none;
+}
+.colorclear:hover { background: var(--danger); color: #fff; border-color: var(--danger); transform: none; }
+
+/* ---------------- context menu & modal ---------------- */
+.ctxmenu {
+  position: fixed; z-index: 100; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
+  padding: 6px; min-width: 200px;
+}
+.ctxmenu button {
+  display: flex; width: 100%; text-align: left; background: transparent;
+  color: var(--text); padding: 8px 12px; border-radius: 8px; font-weight: 500;
+  box-shadow: none; gap: 8px;
+}
+.ctxmenu button:hover { background: var(--accent-soft); color: var(--accent); transform: none; }
+
+/* ---------------- rozbalovací výběr s hledáním (postavy / pohled) ---------------- */
+.viewpick { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+.viewpick .vp-cap {
+  font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); opacity: .75;
+}
+.viewpick .vp-val { font-weight: 700; color: var(--text); font-size: 13.5px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.viewpick .vp-star { font-size: 12px; }
+.viewpick .vp-arrow { font-size: 10px; opacity: .6; }
+.picker { padding: 6px; min-width: 250px; max-width: 320px; }
+.picker-search { padding: 4px 4px 6px; }
+.picker-search input { width: 100%; padding: 7px 10px; font-size: 13px; border-radius: 8px; }
+.picker-list { max-height: 320px; overflow-y: auto; }
+.picker-group {
+  font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 10px 4px;
+}
+.picker-item {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 8px 10px; border-radius: 8px; font-size: 14px; color: var(--text);
+}
+.picker-item:hover { background: var(--accent-soft); }
+.picker-item.sel { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.picker-item .pi-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-item .pi-sub { color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.picker-item.sel .pi-sub { color: var(--accent); opacity: .8; }
+.picker-item .pi-star {
+  display: inline-flex; width: auto; flex: none;
+  background: transparent; border: none; box-shadow: none; padding: 2px 4px;
+  font-size: 14px; line-height: 1; opacity: .45; cursor: pointer; border-radius: 6px;
+}
+.picker-item .pi-star:hover { opacity: 1; background: var(--gold); transform: none; box-shadow: none; }
+.picker-item .pi-star.on { opacity: 1; }
+.picker-empty { padding: 12px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+.picker-foot {
+  border-top: 1px solid var(--border); margin-top: 4px; padding: 8px 10px 4px;
+  font-size: 11.5px; color: var(--muted); line-height: 1.45;
+}
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(20, 15, 40, .45); z-index: 90;
+  display: flex; align-items: flex-start; justify-content: center; padding: 10vh 16px 16px;
+}
+.modal {
+  background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  width: 100%; max-width: 440px; max-height: 70vh; overflow-y: auto; padding: 18px;
+}
+.modal .item { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); box-shadow: none; padding: 9px 12px; border-radius: 8px; font-weight: 500; }
+.modal .item:hover { background: var(--accent-soft); color: var(--accent); transform: none; }
+
+/* ---------------- potvrzovací dialog (náhrada nativního confirm) ---------------- */
+.confirm-modal { max-width: 420px; padding: 20px 22px 18px; animation: confirmIn .14s ease-out; }
+@keyframes confirmIn { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+.confirm-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.confirm-head h3 { margin: 0; font-size: 17px; }
+.confirm-icon {
+  display: flex; align-items: center; justify-content: center; flex: none;
+  width: 30px; height: 30px; border-radius: 9px;
+  background: var(--gold-soft); font-size: 15px;
+}
+.confirm-msg { color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: 18px; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.confirm-actions button { min-width: 96px; justify-content: center; }
+
+/* ---------------- stat blok (D&D 5e) ---------------- */
+.statblock {
+  background: linear-gradient(180deg, var(--gold-soft), var(--panel));
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--gold); border-bottom: 4px solid var(--gold);
+  border-radius: 10px; padding: 16px 22px; margin: 16px 0;
+  width: 100%; box-shadow: var(--shadow);
+}
+/* novinová sazba: obsah plyne do tolika ~320px sloupců, kolik se vejde,
+   a vyváží se — dlouhé akce se rozprostřou místo jednoho úzkého proužku */
+.sb-flow { columns: 320px; column-gap: 32px; column-rule: 1px solid var(--gold-soft); }
+.sb-flow > * { break-inside: avoid; }        /* stat karta i každá akce drží pohromadě */
+.sb-flow .sb-card { margin-bottom: 4px; }
+.sb-flow .sb-h { break-after: avoid; }       /* nadpis sekce zůstane u své první akce */
+.sb-flow p { break-inside: avoid; }
+.sb-name { font-size: 20px; font-weight: 800; color: var(--gold); font-variant: small-caps; letter-spacing: .02em; }
+.sb-meta { font-style: italic; color: var(--muted); font-size: 13.5px; margin-bottom: 4px; }
+.sb-sep { height: 3px; margin: 8px 0; background: linear-gradient(90deg, var(--gold), transparent); border-radius: 2px; }
+.sb-line { font-size: 14px; margin: 2px 0; }
+.sb-line b { color: var(--gold); }
+.sb-abilities { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center; margin: 8px 0; }
+.sb-abilities .ab { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 5px 2px; }
+.sb-abilities .ab b { display: block; font-size: 11px; color: var(--gold); }
+.sb-abilities .ab span { font-size: 14px; font-weight: 700; }
+.sb-abilities .ab i { font-style: normal; font-size: 12px; color: var(--muted); }
+.sb-h { font-weight: 800; color: var(--gold); font-variant: small-caps; border-bottom: 1.5px solid var(--gold); margin: 10px 0 4px; font-size: 15px; }
+.statblock p { margin: 6px 0; font-size: 14px; }
+@media (max-width: 560px) { .sb-abilities { grid-template-columns: repeat(3, 1fr); } }
+
+/* ---------------- inventář ---------------- */
+.inv { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+.inv-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.inv-head h2 { margin: 0; font-size: 19px; }
+.inv-row {
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px;
+  border: 1px solid var(--border); border-left: 4px solid var(--muted);
+  border-radius: 10px; margin-bottom: 8px; background: var(--bg);
+  flex-wrap: wrap;
+}
+.inv-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.inv-name { flex: 1; min-width: 140px; font-weight: 600; }
+.inv-name .muted { font-weight: 400; font-size: 12px; }
+.inv-qty { font-weight: 800; color: var(--accent); min-width: 34px; text-align: center; }
+.inv-stat { font-size: 12.5px; color: var(--muted); min-width: 54px; text-align: right; }
+.inv-price { color: var(--gold); font-weight: 700; font-size: 13px; min-width: 60px; text-align: right; }
+.inv-rarity { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 8px; background: var(--panel2); }
+.inv-total { display: flex; gap: 18px; justify-content: flex-end; font-size: 13px; color: var(--muted); border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 4px; }
+.inv details { margin: -4px 0 10px; }
+.inv summary { cursor: pointer; font-size: 12.5px; color: var(--muted); padding: 0 10px; }
+.inv .note { margin: 8px 0; padding: 10px 14px; }
+/* barvy vzácnosti (D&D) */
+.r-bezny { border-left-color: #9aa0a6 !important; } .r-bezny .inv-rarity { color: #9aa0a6; }
+.r-neobvykly { border-left-color: #2e9e5b !important; } .r-neobvykly .inv-rarity { color: #2e9e5b; }
+.r-vzacny { border-left-color: #3b82f6 !important; } .r-vzacny .inv-rarity { color: #3b82f6; }
+.r-velmi-vzacny { border-left-color: #9333ea !important; } .r-velmi-vzacny .inv-rarity { color: #9333ea; }
+.r-legendarni { border-left-color: #f59e0b !important; } .r-legendarni .inv-rarity { color: #f59e0b; }
+.r-artefakt { border-left-color: #dc2626 !important; } .r-artefakt .inv-rarity { color: #dc2626; }
+.item-meta { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.item-meta .tag { font-size: 13px; padding: 4px 12px; }
+
+/* ---------------- ořez obrázku ---------------- */
+.crop-viewport {
+  position: relative; overflow: hidden; border-radius: 10px;
+  border: 1.5px solid var(--border); cursor: grab; touch-action: none;
+  background: repeating-conic-gradient(var(--panel2) 0% 25%, var(--panel) 0% 50%) 0 0 / 20px 20px;
+}
+.crop-viewport:active { cursor: grabbing; }
+.crop-viewport { display: flex; justify-content: center; }
+.crop-viewport canvas { display: block; width: auto; max-width: 100%; height: auto; }
+.crop-modal { max-width: 460px; max-height: 94vh; display: flex; flex-direction: column; }
+.crop-modal .crop-viewport { flex: 0 1 auto; min-height: 0; }
+
+/* ---------------- chat (plovoucí panel vlevo dole) ---------------- */
+.chat-bubble {
+  position: fixed; left: 18px; bottom: 18px; z-index: 200;
+  width: 54px; height: 54px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 24px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: var(--shadow-lg); border: 0;
+  transition: transform .12s;
+}
+.chat-bubble:hover { transform: scale(1.08); }
+.chat-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: var(--danger); color: #fff; font-size: 11px; font-weight: 800;
+  border-radius: 10px; min-width: 20px; height: 20px; padding: 0 5px;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--bg);
+}
+.chat-panel {
+  position: fixed; left: 18px; bottom: 84px; z-index: 200;
+  width: 370px; max-width: calc(100vw - 36px); height: 520px; max-height: calc(100vh - 120px);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--shadow-lg); display: flex; flex-direction: column; overflow: hidden;
+}
+.chat-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: var(--panel2); border-bottom: 1px solid var(--border);
+  font-weight: 700; flex-shrink: 0;
+}
+.chat-head button { box-shadow: none; }
+.chat-body { flex: 1; overflow-y: auto; padding: 10px 12px; }
+.chat-room-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: transparent; color: var(--text); text-align: left;
+  padding: 10px 12px; border-radius: 10px; box-shadow: none; font-weight: 500;
+}
+.chat-room-item:hover { background: var(--accent-soft); transform: none; }
+.chat-room-item .unread { margin-left: auto; background: var(--danger); color: #fff; border-radius: 10px; font-size: 11px; font-weight: 800; padding: 1px 7px; }
+.chat-msg { margin-bottom: 10px; }
+.chat-msg .meta { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.chat-msg .meta .who { font-weight: 700; color: var(--text); font-size: 12.5px; }
+.chat-msg .meta .who.dm { color: var(--gold); }
+.chat-msg .bubble {
+  display: inline-block; background: var(--panel2); border-radius: 12px;
+  padding: 7px 12px; margin-top: 2px; max-width: 100%; word-wrap: break-word;
+  font-size: 14px; line-height: 1.45;
+}
+.chat-msg.mine .bubble { background: var(--accent-soft); }
+.chat-msg .secret-tag { color: var(--gold); font-size: 11px; font-weight: 700; }
+.chat-msg .lang-text { text-decoration: underline; text-underline-offset: 2px; font-weight: 500; }
+.chat-composer { border-top: 1px solid var(--border); padding: 9px 12px; flex-shrink: 0; background: var(--panel); }
+.chat-composer .row1 { display: flex; gap: 6px; }
+.chat-composer input[type=text] { flex: 1; }
+.chat-composer .opts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; row-gap: 5px; }
+.chat-composer .opts select { width: auto; padding: 4px 8px; font-size: 12.5px; }
+.chat-composer .opt-label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); margin-right: 2px;
+}
+.chat-secret-picks { margin-top: 6px; }
+.lang-chip, .secret-chip {
+  background: var(--panel2); border: 1.5px solid var(--border); color: var(--muted);
+  border-radius: 13px; padding: 3px 11px; font-size: 12.5px; font-weight: 600;
+  box-shadow: none; cursor: pointer;
+}
+.lang-chip:hover, .secret-chip:hover { transform: none; box-shadow: none; filter: brightness(1.1); }
+.lang-chip.on {
+  border-color: var(--lc, var(--accent)); color: var(--lc, var(--accent));
+  background: transparent; text-decoration: underline; text-underline-offset: 2px;
+  box-shadow: 0 0 0 1px var(--lc, var(--accent)) inset;
+}
+.secret-chip.on { background: var(--gold); color: #241a05; border-color: var(--gold); }
+.compose-status {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  padding: 6px 10px; margin-bottom: 6px; border-radius: 8px;
+  background: var(--panel2); border-left: 3px solid var(--gold);
+  font-size: 12px; font-weight: 700;
+}
+.compose-status .cs-lang { text-decoration: underline; text-underline-offset: 2px; }
+.compose-status .cs-secret { color: var(--gold); }
+
+/* ---------------- galerie článku + lightbox ---------------- */
+.article-gallery { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; }
+.gal-main {
+  width: 190px; aspect-ratio: 3 / 4; object-fit: cover;
+  border-radius: 12px; box-shadow: var(--shadow); cursor: zoom-in; flex-shrink: 0;
+}
+.gal-thumbs { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+.gal-thumb {
+  width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
+  box-shadow: var(--shadow); cursor: zoom-in; transition: transform .12s;
+}
+.gal-thumb:hover { transform: scale(1.07); }
+.lightbox {
+  position: fixed; inset: 0; z-index: 300; background: rgba(10, 8, 20, .88);
+  display: flex; align-items: center; justify-content: center;
+}
+.lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 10px; box-shadow: var(--shadow-lg); }
+.lightbox button {
+  position: absolute; background: rgba(255,255,255,.12); color: #fff; border: 0;
+  border-radius: 50%; width: 46px; height: 46px; font-size: 24px; line-height: 1;
+}
+.lightbox button:hover { background: rgba(255,255,255,.25); transform: none; }
+.lb-close { top: 16px; right: 16px; }
+.lb-prev { left: 12px; top: 50%; transform: translateY(-50%); }
+.lb-next { right: 12px; top: 50%; transform: translateY(-50%); }
+.lb-count { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 13px; opacity: .8; }
+
+/* ---------------- stat blok — tabulka vlastností (styl 2024) ---------------- */
+.sb-abgrid { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0; }
+.sb-table { border-collapse: collapse; flex: 1; min-width: 150px; font-size: 13.5px; }
+.sb-table thead th { font-size: 10.5px; color: var(--muted); font-weight: 700; text-align: center; padding: 1px 6px; }
+.sb-table tbody th { text-align: left; color: var(--gold); font-weight: 800; padding: 3px 8px; }
+.sb-table tbody td { text-align: center; padding: 3px 8px; background: var(--panel); }
+.sb-table tbody td.sb-save { background: var(--panel2); }
+.sb-table tbody tr { border-bottom: 2px solid var(--gold-soft); }
+
+/* ---------------- nápověda ---------------- */
+mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; padding: 0 2px; font-weight: 700; }
+.seg-body code { background: var(--panel2); border-radius: 5px; padding: 1px 6px; font-size: 13px; }
+@media (max-width: 560px) {
+  .chat-panel { left: 8px; right: 8px; width: auto; bottom: 78px; height: 65vh; }
+  .chat-bubble { left: 12px; bottom: 12px; }
+}
+
+/* ---------------- auth ---------------- */
+.auth-wrap { max-width: 400px; margin: 9vh auto 0; padding: 0 16px; }
+.auth-wrap .card { padding: 28px; }
+.error { color: var(--danger); font-size: 13.5px; margin: 8px 0; }
+.center { text-align: center; }
+.pagehead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.pagehead h1 { margin: 0; font-size: 26px; }

@@ -1,0 +1,10 @@
+# ---- data kampaní (NIKDY do gitu) ----
+# db.json obsahuje hashe hesel hráčů a veškerý obsah kampaní,
+# uploads/ nahrané obrázky, master-password.txt tajemství.
+# Zálohu dat dělej exportem v Administraci, ne gitem.
+data/
+
+# ---- lokální ----
+.DS_Store
+*.log
+node_modules/

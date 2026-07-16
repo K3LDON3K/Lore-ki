@@ -1,0 +1,9 @@
+{
+  "name": "dnd-wiki",
+  "version": "0.1.0",
+  "description": "DnD znalostní wiki s viditelností na úrovni bloků (bez závislostí)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
