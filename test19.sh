@@ -114,7 +114,7 @@ Q=$(req i_h2.jar GET /api/inv/char/$TOR | python3 -c "import sys,json;d=json.loa
 [ "$Q" = "5" ] && echo "✅ OK: množství se zarazí o stackMax (5)" || { echo "❌ qty clamp: $Q"; exit 1; }
 
 echo "== quest předmět, životy, rozbití, smazání =="
-PID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$PECET,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"neck\"}}" | grep -o '[0-9]*')
+PID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$PECET,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"head\"}}" | grep -o '[0-9]*')
 X=$(req i_h1.jar PUT "/api/inv/instances/$PID/move" "{\"to\":{\"t\":\"zone\",\"zId\":$Z}}")
 check_has "quest předmět hráč neodloží" "$X" "nejde odložit"
 X=$(req i_h2.jar DELETE /api/inv/instances/$MID)
@@ -172,8 +172,8 @@ print('✅ OK: neidentifikované kusy se hráči ve výskytech neukazují')"
 echo "== vlastní sloty + povolené sloty předmětu =="
 X=$(req i_h1.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1}')
 check_has "slot nezaloží hráč" "$X" "error"
-SKEY=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči","cap":1,"group":"Doplňky"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
-check_has "slot nese oblast (skupinu)" "$(req i_h1.jar GET /api/inv/char/$BAR)" "Doplňky"
+SKEY=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Oči"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+check_has "vlastní slot v definicích" "$(req i_h1.jar GET /api/inv/char/$BAR)" "Oči"
 BRYLE=$(mk "Brýle" "{\"w\":1,\"h\":1,\"wearable\":true,\"identifiedDefault\":true,\"slots\":[\"$SKEY\"]}")
 BR=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$BRYLE,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
 X=$(req i_h1.jar PUT "/api/inv/instances/$BR/move" "{\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"head\"}}")
@@ -195,8 +195,8 @@ req i_h1.jar PUT "/api/inv/instances/$OID/move" "{\"to\":{\"t\":\"slot\",\"charI
 echo "== tvary: L-předmět nechá roh volný =="
 LKO=$(mk "Luk L" '{"shape":[{"x":0,"y":0},{"x":0,"y":1},{"x":1,"y":1}],"identifiedDefault":true}')
 KAM=$(mk "Kámen" '{"shape":[{"x":0,"y":0}],"identifiedDefault":true}')
-BAT2=$(mk "Kapsička" '{"wearable":true,"slots":["belt"],"bodySize":1,"identifiedDefault":true,"container":{"cells":[{"x":0,"y":0,"c":"g"},{"x":1,"y":0,"c":"g"},{"x":0,"y":1,"c":"g"},{"x":1,"y":1,"c":"g"}]}}')
-KID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$BAT2,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"belt\"}}" | grep -o '[0-9]*')
+BAT2=$(mk "Kapsička" '{"wearable":true,"slots":["cloak"],"bodySize":1,"identifiedDefault":true,"container":{"cells":[{"x":0,"y":0,"c":"g"},{"x":1,"y":0,"c":"g"},{"x":0,"y":1,"c":"g"},{"x":1,"y":1,"c":"g"}]}}')
+KID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$BAT2,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"cloak\"}}" | grep -o '[0-9]*')
 LID=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$LKO,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
 SID2=$(req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$KAM,\"to\":{\"t\":\"zone\",\"zId\":$Z}}" | grep -o '[0-9]*')
 req i_h1.jar PUT "/api/inv/instances/$LID/move" "{\"to\":{\"t\":\"grid\",\"cId\":$KID,\"x\":0,\"y\":0}}" > /dev/null
@@ -208,25 +208,25 @@ V=$(req i_d.jar GET /api/articles/$LKO)
 check_has "w/h dopočítané z tvaru (2×2)" "$V" '"w":2'
 
 echo "== úprava vlastního slotu =="
-SK2=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Kapsa","cap":2,"group":"Doplňky"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
-req i_d.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"group":"Tělo","label":"Kapsička"}' > /dev/null
-check_has "slot přesunut do jiné oblasti" "$(req i_h1.jar GET /api/inv/char/$BAR)" '"group":"Tělo"'
+SK2=$(req i_d.jar POST /api/campaigns/$CID/inv/slots '{"label":"Kapsa","cap":2}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+req i_d.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"col":1,"label":"Kapsička"}' > /dev/null
+check_has "slot přesunut do levého sloupce" "$(req i_h1.jar GET /api/inv/char/$BAR)" '"'$SK2'":1'
 KAM2=$(mk "Oblázek" '{"shape":[{"x":0,"y":0},{"x":1,"y":0}],"wearable":true,"identifiedDefault":true}')
 req i_d.jar POST /api/campaigns/$CID/inv/instances "{\"articleId\":$KAM2,\"to\":{\"t\":\"slot\",\"charId\":$BAR,\"slot\":\"$SK2\"}}" > /dev/null
 X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"cap":1}')
 check_has "zmenšení kapacity obsazeného slotu odmítnuto" "$X" "nelze zmenšit"
-X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"group":"Ruce"}')
+X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/$SK2 '{"col":2}')
 check_has "hráč slot neupraví" "$X" "error"
 
 echo "== přesun vestavěného slotu do jiné oblasti =="
-req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"group":"Doplňky"}' > /dev/null
-check_has "override uložen" "$(req i_h1.jar GET /api/inv/char/$BAR)" '"head":"Doplňky"'
+req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"col":2}' > /dev/null
+check_has "systémový slot přesunut do pravého sloupce" "$(req i_h1.jar GET /api/inv/char/$BAR)" '"head":2'
 X=$(req i_d.jar DELETE /api/campaigns/$CID/inv/slots/head)
-check_has "vestavěný slot nejde smazat" "$X" "nejde smazat"
-X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/head '{"group":"Ruce"}')
+check_has "systémový slot nejde smazat" "$X" "nejde smazat"
+X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/head '{"col":1}')
 check_has "hráč vestavěný slot nepřesune" "$X" "error"
 X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":"Makovice"}')
-check_has "vestavěný nejde přejmenovat" "$X" "jen oblast"
+check_has "systémový nejde přejmenovat" "$X" "jen sloupec"
 
 echo "== smazání zóny i s předměty (force) =="
 Z2=$(req i_d.jar POST /api/campaigns/$CID/inv/zones '{"name":"Smetiste"}' | grep -o '[0-9]*')

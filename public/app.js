@@ -3104,25 +3104,10 @@ async function renderEditor(aid) {
           <div class="pick-group" style="margin-bottom:6px">${pill('id="iAnywhere"', '🌐 Kamkoli', !!it.wearable && !(it.slots || []).length)}</div>
           ${(() => {
             const customs = (state.campaign && state.campaign.customSlots) || [];
-            const ovr = (state.campaign && state.campaign.slotOverrides) || {};
-            const bg = k => ovr[k] || (INV_GROUPS.find(g => g.slots.includes(k)) || {}).label;
-            const grps = INV_GROUPS.map(g => ({
-              label: g.label,
-              items: INV_GROUPS.flatMap(x => x.slots).filter(k => bg(k) === g.label).map(k => ({ key: k, label: INV_SLOT_DEFS[k].l }))
-                .concat(customs.filter(c => (c.group || 'Další sloty') === g.label).map(c => ({ key: c.key, label: c.label })))
-            }));
-            for (const g of [...new Set(Object.values(ovr))].filter(x => !INV_GROUPS.some(y => y.label === x))) {
-              let gg = grps.find(x => x.label === g);
-              if (!gg) { gg = { label: g, items: [] }; grps.push(gg); }
-              gg.items.push(...INV_GROUPS.flatMap(x => x.slots).filter(k => bg(k) === g).map(k => ({ key: k, label: INV_SLOT_DEFS[k].l })));
-            }
-            for (const c of customs) {
-              const gname = c.group || 'Další sloty';
-              if (INV_GROUPS.some(g => g.label === gname)) continue;
-              let g = grps.find(x => x.label === gname);
-              if (!g) { g = { label: gname, items: [] }; grps.push(g); }
-              g.items.push({ key: c.key, label: c.label });
-            }
+            const grps = [
+              { label: 'Systémové sloty', items: Object.entries(INV_SLOT_DEFS).map(([k, d]) => ({ key: k, label: d.l })) },
+              { label: 'Vlastní sloty', items: customs.map(c => ({ key: c.key, label: c.label })) }
+            ];
             return grps.filter(g => g.items.length).map(g => `
               <div class="slotgrp" data-grp>
                 <div class="inv-group-label">${esc(g.label)}</div>
@@ -4073,21 +4058,10 @@ async function chatRenderManage(panel) {
 // ================================================================ INVENTÁŘ (grafický)
 // Nákres postavy se sloty, mřížky kontejnerů, zóny podlahy. Drag&drop přes Pointer
 // Events (funguje myší i dotykem). Server všechno validuje — klient jen kreslí a posílá.
-const INV_SLOT_DEFS = { // w/h = vzhled na nákresu, cap = kapacita v políčkách (kopíruje server)
-  back: { l: 'Batoh', w: 2, h: 2, cap: 4 }, handR: { l: 'Pravá ruka', w: 1, h: 3, cap: 4 }, gloves: { l: 'Rukavice', w: 1, h: 1, cap: 1 },
-  wristR: { l: 'Zápěstí', w: 1, h: 1, cap: 1 }, ring1: { l: 'Prsten 1', w: 1, h: 1, cap: 1 }, ring2: { l: 'Prsten 2', w: 1, h: 1, cap: 1 },
-  head: { l: 'Hlava', w: 1, h: 1, cap: 1 }, neck: { l: 'Krk', w: 1, h: 1, cap: 1 }, torso: { l: 'Trup', w: 2, h: 2, cap: 4 },
-  belt: { l: 'Opasek', w: 3, h: 1, cap: 3 }, pants: { l: 'Kalhoty', w: 2, h: 1, cap: 2 }, boots: { l: 'Boty', w: 1, h: 1, cap: 1 },
-  cloak: { l: 'Plášť', w: 1, h: 2, cap: 2 }, handL: { l: 'Levá ruka', w: 1, h: 3, cap: 4 }, forearm: { l: 'Předloktí', w: 1, h: 1, cap: 1 },
-  wristL: { l: 'Zápěstí', w: 1, h: 1, cap: 1 }, ring3: { l: 'Prsten 3', w: 1, h: 1, cap: 1 }, ring4: { l: 'Prsten 4', w: 1, h: 1, cap: 1 }
+const INV_SLOT_DEFS = { // systémové sloty (labels; nejdou smazat)
+  head: { l: 'Hlava' }, torso: { l: 'Trup' }, cloak: { l: 'Plášť / toulec' },
+  back: { l: 'Záda / batoh' }, handL: { l: 'Levá ruka' }, handR: { l: 'Pravá ruka' }
 };
-// kompaktní skupiny slotů (kapacity dál hlídá server — velikost boxu je jen vizuální)
-const INV_GROUPS = [
-  { label: 'Tělo', slots: ['head', 'neck', 'torso', 'cloak', 'back'] },
-  { label: 'Ruce', slots: ['handR', 'handL', 'gloves', 'forearm', 'wristR', 'wristL'] },
-  { label: 'Pás a nohy', slots: ['belt', 'pants', 'boots'] },
-  { label: 'Prsteny', slots: ['ring1', 'ring2', 'ring3', 'ring4'] },
-];
 const invUI = { tab: null, chars: [], zones: [], items: [], charData: null, reloading: false };
 /** Buňky tvaru položené na (X,Y) s otočením — zrcadlí server. */
 function invPlacedCells(it, X, Y, rot) {
@@ -4300,7 +4274,7 @@ async function invTakeToChar(it, chId) {
   const used = new Set(data.items.filter(i => i.loc && i.loc.t === 'slot').map(i => i.loc.slot));
   if (it.wearable) {
     const caps = data.slots || {};
-    let order = ['handR', 'handL', 'back', 'belt', 'torso', 'cloak', 'pants', 'head', 'neck', 'boots', 'gloves', 'forearm', 'wristR', 'wristL', 'ring1', 'ring2', 'ring3', 'ring4',
+    let order = ['handR', 'handL', 'back', 'cloak', 'torso', 'head',
       ...(data.customSlots || []).map(s => s.key)];
     if (it.slots && it.slots.length) order = order.filter(sl => it.slots.includes(sl)); // předmět s vyhrazenými sloty
     for (const slot of order.filter(sl => !used.has(sl) && caps[sl])) {
@@ -4540,46 +4514,39 @@ async function invDrawBody() {
       return slot;
     };
     const custom = data.customSlots || [];
-    const overrides = data.slotOverrides || {};
-    // efektivní oblast vestavěného slotu: override kampaně, jinak jeho výchozí skupina
-    const builtinGroup = key => overrides[key] || (INV_GROUPS.find(g => g.slots.includes(key)) || {}).label;
-    // vlastní skupiny (oblasti): z vlastních slotů i z přesunutých vestavěných
-    const customGroups = [...new Set([
-      ...custom.map(s => s.group || 'Další sloty'),
-      ...Object.values(overrides)
-    ])].filter(g => !INV_GROUPS.some(x => x.label === g));
-    const mkRow = (label, keysHtmlFn) => {
-      const row = document.createElement('div');
-      row.className = 'inv-group';
-      row.innerHTML = `<div class="inv-group-label">${esc(label)}</div>`;
-      const rowSlots = document.createElement('div');
-      rowSlots.className = 'inv-group-slots';
-      keysHtmlFn(rowSlots);
-      row.appendChild(rowSlots);
-      doll.appendChild(row);
-      return rowSlots;
+    const cols = data.slotCols || {};
+    const order = data.slotOrder || [];
+    const labelOf = key => (INV_SLOT_DEFS[key] || {}).l || (custom.find(c => c.key === key) || {}).label || key;
+    const isCustom = key => !INV_SLOT_DEFS[key];
+    const colKeys = n => order.filter(k => (cols[k] || (INV_SLOT_DEFS[k] ? 1 : 2)) === n);
+    const mkCol = (n, title) => {
+      const col = document.createElement('div');
+      col.className = 'inv-col2';
+      col.innerHTML = `<div class="inv-group-label">${title}</div>`;
+      const keys = colKeys(n);
+      keys.forEach((key, idx) => {
+        const slot = mkSlot(key, labelOf(key), 1, isCustom(key));
+        // šipky pořadí pro DM (v rámci sloupce)
+        if (dm) {
+          const name = slot.querySelector('.sl-name');
+          if (idx > 0) name.insertAdjacentHTML('beforeend', `<a class="sl-edit" data-slotmove="up:${key}" title="Posunout výš">↑</a>`);
+          if (idx < keys.length - 1) name.insertAdjacentHTML('beforeend', `<a class="sl-edit" data-slotmove="down:${key}" title="Posunout níž">↓</a>`);
+        }
+        col.appendChild(slot);
+      });
+      if (n === 2 && dm) {
+        const add = document.createElement('button');
+        add.className = 'inv-slot-add';
+        add.textContent = '＋ slot';
+        add.title = 'Nový slot postavy (platí pro všechny postavy v kampani)';
+        add.onclick = () => invNewSlotDialog();
+        col.appendChild(add);
+      }
+      return col;
     };
-    const allBuiltins = INV_GROUPS.flatMap(g => g.slots);
-    const rowFor = (label, rowSlots) => {
-      for (const key of allBuiltins.filter(k => builtinGroup(k) === label))
-        rowSlots.appendChild(mkSlot(key, INV_SLOT_DEFS[key].l, data.slots[key] || 1, false));
-      for (const s of custom.filter(c => (c.group || 'Další sloty') === label))
-        rowSlots.appendChild(mkSlot(s.key, s.label, s.cap, true));
-    };
-    for (const grp of INV_GROUPS) {
-      // skupina se vykreslí, jen když v ní něco zbylo
-      if (allBuiltins.some(k => builtinGroup(k) === grp.label) || custom.some(c => (c.group || 'Další sloty') === grp.label))
-        mkRow(grp.label, rowSlots => rowFor(grp.label, rowSlots));
-    }
-    for (const g of customGroups) mkRow(g, rowSlots => rowFor(g, rowSlots));
-    if (dm) { // ＋ slot: dialog s názvem, velikostí a umístěním (včetně nové oblasti)
-      const add = document.createElement('button');
-      add.className = 'inv-slot-add';
-      add.textContent = '＋ slot';
-      add.title = 'Nový slot postavy (platí pro všechny postavy v kampani)';
-      add.onclick = () => invNewSlotDialog([...INV_GROUPS.map(g => g.label), ...customGroups]);
-      doll.appendChild(add);
-    }
+    doll.classList.add('two-col');
+    doll.appendChild(mkCol(1, 'Systémové sloty'));
+    doll.appendChild(mkCol(2, 'Vlastní sloty'));
     // obouruční zbraň v ruce → druhá ruka zašedne
     const hands = ['handR', 'handL'];
     for (const hd of hands) {
@@ -4611,10 +4578,16 @@ async function invDrawBody() {
     body.querySelectorAll('[data-slotedit]').forEach(x => x.onclick = (e) => {
       e.stopPropagation();
       const key = x.dataset.slotedit;
-      const groupsAll = [...INV_GROUPS.map(g => g.label), ...customGroups];
       const s = (data.customSlots || []).find(c => c.key === key);
-      if (s) invNewSlotDialog(groupsAll, s);
-      else invNewSlotDialog(groupsAll, { key, label: INV_SLOT_LABEL_RO(key), cap: 1, group: builtinGroup(key), builtin: true });
+      const col = (data.slotCols || {})[key] || (INV_SLOT_DEFS[key] ? 1 : 2);
+      if (s) invNewSlotDialog(null, { key, label: s.label, col });
+      else invNewSlotDialog(null, { key, label: INV_SLOT_LABEL_RO(key), col, builtin: true });
+    });
+    body.querySelectorAll('[data-slotmove]').forEach(x => x.onclick = async (e) => {
+      e.stopPropagation();
+      const [dir, key] = x.dataset.slotmove.split(':');
+      try { await api(`/api/campaigns/${state.campaign.id}/inv/slots/${key}`, { method: 'PUT', body: { move: dir } }); invDrawBody(); }
+      catch (err) { invToast(err.message); }
     });
     body.querySelectorAll('[data-slotdel]').forEach(x => x.onclick = async (e) => {
       e.stopPropagation();
@@ -4809,18 +4782,17 @@ async function invDetailReload(instId) {
   }, 200);
 }
 /** Dialog pro nový slot postavy: název, velikost, umístění (existující nebo nová oblast). */
-function invNewSlotDialog(groups, edit = null) {
+function invNewSlotDialog(_unused, edit = null) {
   const overlay = h(`<div class="modal-overlay"><div class="modal">
     <h3 style="margin:0 0 10px">${edit ? (edit.builtin ? '✎ Přesunout slot' : '✎ Upravit slot') : '＋ Nový slot postavy'}</h3>
-    <p class="muted" style="margin-top:0">${edit ? 'Změna platí pro všechny postavy v kampani.' : 'Slot se objeví u <b>všech postav v kampani</b>.'}${edit && edit.builtin ? ' U vestavěného slotu lze změnit jen oblast.' : ''}</p>
+    <p class="muted" style="margin-top:0">${edit ? 'Změna platí pro všechny postavy v kampani.' : 'Slot se objeví u <b>všech postav v kampani</b>.'}${edit && edit.builtin ? ' Systémový slot jde jen přesunout (sloupec, pořadí šipkami na nákresu).' : ''}</p>
     <label>Název slotu</label>
-    <input data-k="name" placeholder="např. Oči" value="${edit ? esc(edit.label) : ''}" ${edit && edit.builtin ? 'disabled' : ''}>
-    <label>Umístění (oblast)</label>
-    <select data-k="group" style="width:auto">
-      ${groups.map(g => `<option value="${esc(g)}" ${edit && (edit.group || 'Další sloty') === g ? 'selected' : ''}>${esc(g)}</option>`).join('')}
-      <option value="__new">＋ nová oblast…</option>
+    <input data-k="name" placeholder="např. Prsten" value="${edit ? esc(edit.label) : ''}" ${edit && edit.builtin ? 'disabled' : ''}>
+    <label>Sloupec</label>
+    <select data-k="col" style="width:auto">
+      <option value="1" ${edit && edit.col === 1 ? 'selected' : ''}>Levý (systémové)</option>
+      <option value="2" ${!edit || edit.col !== 1 ? 'selected' : ''}>Pravý (vlastní)</option>
     </select>
-    <input data-k="newgroup" placeholder="Název nové oblasti (např. Doplňky)" style="display:none; margin-top:6px">
     <div style="margin-top:14px; display:flex; gap:8px">
       <button data-k="save">${edit ? 'Uložit změny' : 'Vytvořit slot'}</button>
       <button class="ghost" data-k="cancel">Zrušit</button>
@@ -4831,20 +4803,21 @@ function invNewSlotDialog(groups, edit = null) {
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
   const q = k => overlay.querySelector(`[data-k=${k}]`);
   q('cancel').onclick = () => overlay.remove();
-  q('group').onchange = () => { q('newgroup').style.display = q('group').value === '__new' ? '' : 'none'; };
   q('save').onclick = async () => {
     const label = q('name').value.trim();
-    if (!label) { q('err').textContent = 'Zadejte název slotu.'; return; }
-    const group = q('group').value === '__new' ? q('newgroup').value.trim() : q('group').value;
-    if (!group) { q('err').textContent = 'Zadejte název oblasti.'; return; }
+    if (!edit && !label) { q('err').textContent = 'Zadejte název slotu.'; return; }
+    const col = parseInt(q('col').value, 10);
     try {
-      const body = edit && edit.builtin ? { group } : { label, group };
-      if (edit) await api(`/api/campaigns/${state.campaign.id}/inv/slots/${edit.key}`, { method: 'PUT', body });
-      else await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body });
+      if (edit) {
+        const body = edit.builtin ? { col } : { label, col };
+        await api(`/api/campaigns/${state.campaign.id}/inv/slots/${edit.key}`, { method: 'PUT', body });
+      } else {
+        await api(`/api/campaigns/${state.campaign.id}/inv/slots`, { method: 'POST', body: { label, col } });
+      }
       overlay.remove(); invDrawBody();
     } catch (e) { q('err').textContent = e.message; }
   };
-  setTimeout(() => q('name').focus(), 30);
+  setTimeout(() => { if (!q('name').disabled) q('name').focus(); }, 30);
 }
 
 /** Překreslí tělo i otevřený panel zóny. */

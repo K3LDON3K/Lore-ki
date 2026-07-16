@@ -1074,3 +1074,11 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .inv-token.shaped { pointer-events: none; }
 .inv-token.shaped .tk-hit { position: absolute; pointer-events: auto; touch-action: none; cursor: grab; }
 .inv-ghost .tk-hit { pointer-events: none; }
+
+/* ---- inventář: dvousloupcové sloty ---- */
+.inv-doll.two-col { flex-direction: row; gap: 22px; align-items: flex-start; }
+.inv-col2 { display: flex; flex-direction: column; gap: 8px; min-width: 150px; }
+.inv-col2 .inv-slot2 { width: 150px; }
+.inv-col2 .inv-slot2 .sl-body { height: 64px; }
+.inv-col2 .inv-group-label { margin-bottom: 2px; }
+.inv-col2 .inv-slot-add { align-self: stretch; height: 44px; }
