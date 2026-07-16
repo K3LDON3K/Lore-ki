@@ -1090,3 +1090,57 @@ mark { background: var(--gold-soft); color: var(--gold); border-radius: 3px; pad
 .inv-cont-title { text-align: center; }
 /* kontejnery vedle sebe, když se vejdou; při otevřeném panelu se samy zalomí */
 .inv-conts { flex-direction: row; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: 16px; }
+
+/* ---- inventář: kontejnery — úzké vedle sebe, široké pod sebou ---- */
+.inv-conts { gap: 18px 22px; }
+.inv-cont.wide { flex-basis: 100%; }
+
+/* ---- inventář: menší sloty s názvem svisle vlevo, svislé titulky vysokých kontejnerů, skupiny v liště ---- */
+.inv-col2 { min-width: 0; }
+.inv-col2 .inv-slot2 { width: auto; display: flex; align-items: stretch; }
+.inv-col2 .inv-slot2 .sl-name {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; max-height: 64px; padding: 3px 2px; font-size: 10px; letter-spacing: .4px;
+  border-bottom: 0; border-left: 1px solid var(--border);
+}
+.inv-col2 .inv-slot2 .sl-body { width: 64px; height: 64px; flex: none; }
+.inv-col2 .inv-slot-add { height: 36px; }
+
+.inv-cont.tall { display: flex; align-items: stretch; gap: 8px; padding: 10px 12px; }
+.inv-cont.tall .inv-cont-title {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  margin: 0; display: flex; align-items: center; justify-content: center;
+}
+
+.inv-tabs { align-items: stretch; gap: 12px; }
+.inv-tabgrp { border: 1px solid var(--border); border-radius: 12px; padding: 6px 10px 8px; background: var(--panel); }
+.tabgrp-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 5px; }
+.tabgrp-items { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+.zone-pick { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.zone-pick button { text-align: left; }
+
+/* ---- inventář: slot = čtvercové tělo 64×64 + svislý název po straně; menší titulky kontejnerů ---- */
+.inv-col2 { align-items: flex-start; } /* sloty se neroztahují na šířku sloupce */
+.inv-col2 .inv-slot2 { width: 88px; height: 68px; display: flex; align-items: stretch; }
+.inv-col2 .inv-slot2 .sl-name {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 100%; max-height: none; padding: 2px 1px;
+  font-size: 9px; letter-spacing: .2px; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-bottom: 0; border-left: 1px solid var(--border);
+}
+.inv-col2 .inv-slot2 .sl-body { width: 64px; height: auto; flex: none; }
+
+.inv-cont-title { font-size: 12.5px; }
+.inv-cont-title .muted { font-size: 10.5px; font-weight: 500; }
+.inv-cont.tall .inv-cont-title { gap: 5px; } /* mezera mezi názvem a slotem i ve svislém textu */
+
+/* karta nastavení slotů */
+.slotset { display: flex; flex-direction: column; gap: 8px; }
+.slotset-row { display: flex; gap: 10px; align-items: center; }
+.slotset-row input { flex: 0 1 260px; margin: 0; }
+.slotset-row select { width: auto; margin: 0; }
+.slotset-base { flex: none; width: 130px; font-size: 12.5px; color: var(--muted); font-weight: 600; }

@@ -225,8 +225,17 @@ X=$(req i_d.jar DELETE /api/campaigns/$CID/inv/slots/head)
 check_has "systémový slot nejde smazat" "$X" "nejde smazat"
 X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/head '{"col":1}')
 check_has "hráč vestavěný slot nepřesune" "$X" "error"
-X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":"Makovice"}')
-check_has "systémový nejde přejmenovat" "$X" "jen sloupec"
+req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":"Makovice"}' > /dev/null
+X=$(req i_d.jar GET "/api/inv/char/$BAR")
+check_has "systémový slot má zobrazovaný název" "$X" "Makovice"
+check_has "výchozí název zůstává (baseLabel)" "$X" '"baseLabel":"Hlava"'
+X=$(req i_h1.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":"Hacknuto"}')
+check_has "hráč zobrazovaný název nezmění" "$X" "error"
+req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"label":""}' > /dev/null
+X=$(req i_d.jar GET "/api/inv/char/$BAR")
+check_not "prázdný název = zpět na výchozí" "$X" "Makovice"
+X=$(req i_d.jar PUT /api/campaigns/$CID/inv/slots/head '{"cap":3}')
+check_has "systémový slot nemá kapacitu" "$X" "error"
 
 echo "== smazání zóny i s předměty (force) =="
 Z2=$(req i_d.jar POST /api/campaigns/$CID/inv/zones '{"name":"Smetiste"}' | grep -o '[0-9]*')

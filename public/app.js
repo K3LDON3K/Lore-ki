@@ -333,6 +333,7 @@ function navItems(cid) {
 const SETTINGS_TABS = [
   { key: 'general', icon: '⚙️', label: 'Obecné', path: 'settings' },
   { key: 'nav', icon: '🧭', label: 'Navigace', path: 'settings/nav' },
+  { key: 'inv', icon: '🎒', label: 'Inventář', path: 'settings/inv' },
   { key: 'players', icon: '👥', label: 'Hráči a postavy', path: 'players' },
   { key: 'categories', icon: '🏷️', label: 'Kategorie', path: 'categories' },
 ];
@@ -832,6 +833,35 @@ function confirmDialog(message, opts = {}) {
     overlay.querySelector('[data-k=no]').onclick = () => done(false);
     overlay.querySelector('[data-k=yes]').onclick = () => done(true);
     setTimeout(() => overlay.querySelector('[data-k=yes]').focus(), 10);
+  });
+}
+
+/** Zadávací dialog ve stylu confirmDialog. Vrátí zadanou hodnotu, nebo null při zrušení. */
+function promptDialog(message, opts = {}) {
+  const { title = 'Zadání', icon = '✏️', ok = 'OK', cancel = 'Zrušit', value = '', placeholder = '', type = 'text', min, max } = opts;
+  return new Promise(resolve => {
+    closeCtxMenu();
+    const overlay = h(`<div class="modal-overlay"><div class="modal confirm-modal" role="dialog" aria-modal="true">
+      <div class="confirm-head"><span class="confirm-icon">${icon}</span><h3>${esc(title)}</h3></div>
+      ${message ? `<div class="confirm-msg">${esc(message).replace(/\n/g, '<br>')}</div>` : ''}
+      <input data-k="val" type="${type}"${min !== undefined ? ` min="${min}"` : ''}${max !== undefined ? ` max="${max}"` : ''} value="${esc(String(value))}" placeholder="${esc(placeholder)}" style="width:100%; margin-bottom:14px">
+      <div class="confirm-actions">
+        <button class="secondary" data-k="no">${esc(cancel)}</button>
+        <button data-k="yes">${esc(ok)}</button>
+      </div>
+    </div></div>`).firstElementChild;
+    document.body.appendChild(overlay);
+    const inp = overlay.querySelector('[data-k=val]');
+    const done = v => { document.removeEventListener('keydown', onKey, true); overlay.remove(); resolve(v); };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); done(null); }
+      else if (e.key === 'Enter') { e.preventDefault(); done(inp.value); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    overlay.onclick = e => { if (e.target === overlay) done(null); };
+    overlay.querySelector('[data-k=no]').onclick = () => done(null);
+    overlay.querySelector('[data-k=yes]').onclick = () => done(inp.value);
+    setTimeout(() => { inp.focus(); inp.select(); }, 10);
   });
 }
 
@@ -1897,6 +1927,7 @@ async function renderArticleList(category = null) {
 async function renderCampaignSettings(tab = 'general') {
   if (!canEdit()) { location.hash = `#/c/${state.campaign.id}`; return; }
   if (tab === 'nav') return renderNavSettings();
+  if (tab === 'inv') return renderInvSettings();
   const c = state.campaign;
   shell(`
     ${settingsHead('general')}
@@ -1935,6 +1966,61 @@ async function renderCampaignSettings(tab = 'general') {
       c.description = $app.querySelector('#csDesc').value; c.iconImageId = iconId;
       location.hash = `#/c/${c.id}`;
     } catch (e) { $app.querySelector('#csErr').textContent = e.message; }
+  };
+}
+
+// ---------------------------------------------------------------- nastavení → inventář: sloty postavy (DM)
+async function renderInvSettings() {
+  const c = state.campaign;
+  let data;
+  try { data = await api(`/api/campaigns/${c.id}/inv/slots`); }
+  catch (e) { shell(`${settingsHead('inv')}<p class="error">${esc(e.message)}</p>`, { active: 'settings' }); return; }
+  shell(`
+    ${settingsHead('inv')}
+    <div class="card">
+      <h3 style="margin-top:0">Systémové sloty postavy</h3>
+      <p class="muted">Šestice pevných slotů nejde smazat, ale můžete jim dát vlastní <b>zobrazovaný název</b> — třeba z „Plášť / toulec“ udělat jen „Záda“. Prázdné pole = výchozí název.</p>
+      <div class="slotset">
+        ${data.systemSlots.map(s => `<div class="slotset-row">
+          <span class="slotset-base" title="Výchozí název (nejde změnit)">${esc(s.baseLabel)}</span>
+          <input data-syslot="${s.key}" value="${esc(s.label)}" placeholder="${esc(s.baseLabel)}" maxlength="30">
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Vlastní sloty</h3>
+      <p class="muted">Platí pro všechny postavy v kampani a zobrazují se v pravém sloupci nákresu (jde je přesunout i doleva). Smazat jde jen prázdný slot.</p>
+      <div class="slotset" id="csCustom">
+        ${data.customSlots.map(s => `<div class="slotset-row">
+          <input data-cuslot="${s.key}" value="${esc(s.label)}" maxlength="30">
+          <select data-cucol="${s.key}"><option value="1" ${s.col === 1 ? 'selected' : ''}>Levý sloupec</option><option value="2" ${s.col === 2 ? 'selected' : ''}>Pravý sloupec</option></select>
+          <button class="small danger" data-cudel="${s.key}" title="Smazat slot (musí být prázdný u všech postav)">✕</button>
+        </div>`).join('') || '<p class="muted">Zatím žádné — přidejte třeba Prsten nebo Přívěsek.</p>'}
+      </div>
+      <button class="small secondary" id="csSlotAdd" style="margin-top:10px">＋ nový slot</button>
+    </div>`,
+    { active: 'settings', crumbs: [{ label: settingsTabLabel('inv') }] });
+
+  const put = async (key, body) => {
+    try { await api(`/api/campaigns/${c.id}/inv/slots/${key}`, { method: 'PUT', body }); return true; }
+    catch (e) { invToast(e.message); return false; }
+  };
+  $app.querySelectorAll('[data-syslot]').forEach(inp => inp.onchange = () => put(inp.dataset.syslot, { label: inp.value }));
+  $app.querySelectorAll('[data-cuslot]').forEach(inp => inp.onchange = async () => {
+    if (!inp.value.trim()) { invToast('Název nesmí být prázdný.'); return; }
+    await put(inp.dataset.cuslot, { label: inp.value });
+  });
+  $app.querySelectorAll('[data-cucol]').forEach(sel => sel.onchange = () => put(sel.dataset.cucol, { col: +sel.value }));
+  $app.querySelectorAll('[data-cudel]').forEach(b => b.onclick = async () => {
+    if (!await confirmDialog('Smazat slot pro celou kampaň? Musí být prázdný u všech postav.', { title: 'Smazat slot', ok: 'Smazat', danger: true })) return;
+    try { await api(`/api/campaigns/${c.id}/inv/slots/${b.dataset.cudel}`, { method: 'DELETE' }); renderInvSettings(); }
+    catch (e) { invToast(e.message); }
+  });
+  $app.querySelector('#csSlotAdd').onclick = async () => {
+    const name = await promptDialog('', { title: 'Nový slot postavy', icon: '🧍', ok: 'Vytvořit', placeholder: 'Název (např. Prsten)' });
+    if (!name || !name.trim()) return;
+    try { await api(`/api/campaigns/${c.id}/inv/slots`, { method: 'POST', body: { label: name, col: 2 } }); renderInvSettings(); }
+    catch (e) { invToast(e.message); }
   };
 }
 
@@ -4094,8 +4180,9 @@ function invPlacedCells(it, X, Y, rot) {
 }
 function INV_SLOT_LABEL_RO(key) { return (INV_SLOT_DEFS[key] || {}).l || key; }
 function invSlotLabel(key) {
+  if ((invUI.sysLabels || {})[key]) return invUI.sysLabels[key];
   if (INV_SLOT_DEFS[key]) return INV_SLOT_DEFS[key].l;
-  const cs = ((state.campaign && state.campaign.customSlots) || []).find(s => s.key === key);
+  const cs = [...(invUI.customSlots || []), ...((state.campaign && state.campaign.customSlots) || [])].find(s => s.key === key);
   return cs ? cs.label : key;
 }
 
@@ -4147,6 +4234,27 @@ function invTokenEl(it, cell, fit = false) {
       items.push({ icon: '⟳', label: 'Otočit', action: async () => { if (await invRotate(it)) invRefresh(); } });
     if (it.stackable && it.qty > 1)
       items.push({ icon: '✂️', label: 'Rozdělit stack…', action: async () => { if (await invSplitStack(it)) invRefresh(); } });
+    // přesun rovnou z nabídky: nasadit do povoleného volného slotu, uložit do jiného kontejneru
+    const chId = invUI.tab && invUI.tab[0] === 'c' ? +invUI.tab.slice(1) : null;
+    const mv = async to => { try { await api(`/api/inv/instances/${it.id}/move`, { method: 'PUT', body: { to } }); invRefresh(); } catch (err) { invToast(err.message); } };
+    if (it.wearable && chId) {
+      const used = new Set((invUI.items || []).filter(i => i.id !== it.id && i.loc && i.loc.t === 'slot' && i.loc.charId === chId).map(i => i.loc.slot));
+      const allowed = (it.slots && it.slots.length) ? it.slots : Object.keys(invUI.slotCaps || {});
+      for (const key of allowed) {
+        if (used.has(key)) continue;
+        if (it.loc && it.loc.t === 'slot' && it.loc.charId === chId && it.loc.slot === key) continue;
+        items.push({ icon: '🧍', label: `Nasadit: ${invSlotLabel(key)}`, action: () => mv({ t: 'slot', charId: chId, slot: key }) });
+      }
+    }
+    if (!it.container) {
+      const all = [...(invUI.items || []), ...(invUI.zoneItems || [])];
+      const inCont = it.loc && it.loc.t === 'grid' ? it.loc.cId : -1;
+      for (const cont of (invUI.items || []).filter(i => i.container && i.loc && i.loc.t === 'slot' && i.id !== inCont)) {
+        const spot = invFindSpot(cont, all, it);
+        if (!spot) continue;
+        items.push({ icon: '🎒', label: `Do: ${cont.name}`, action: () => mv({ t: 'grid', cId: cont.id, x: spot.x, y: spot.y }) });
+      }
+    }
     for (const z of invUI.zones) {
       if (it.loc && it.loc.t === 'zone' && it.loc.zId === z.id) continue; // tam už leží
       items.push({
@@ -4251,13 +4359,53 @@ function invDropTarget(ev, dragging) {
   return null;
 }
 
-/** Rozdělení stacku: oddělená část jde do otevřené / první zóny. */
+/** Výběr zóny: 0 zón → chyba, 1 → rovnou, více → dialog. Vrátí id nebo null. */
+function invPickZone(title = 'Kam odložit?') {
+  const zs = invUI.zones || [];
+  if (!zs.length) { invToast('Není kam odložit — žádná zóna podlahy neexistuje.'); return Promise.resolve(null); }
+  if (zs.length === 1) return Promise.resolve(zs[0].id);
+  return new Promise(resolve => {
+    closeCtxMenu();
+    const overlay = h(`<div class="modal-overlay"><div class="modal confirm-modal" role="dialog" aria-modal="true">
+      <div class="confirm-head"><span class="confirm-icon">📍</span><h3>${esc(title)}</h3></div>
+      <div class="zone-pick">${zs.map(z => `<button class="secondary" data-z="${z.id}">📍 ${esc(z.name)}</button>`).join('')}</div>
+      <div class="confirm-actions"><button class="secondary" data-k="no">Zrušit</button></div>
+    </div></div>`).firstElementChild;
+    document.body.appendChild(overlay);
+    const done = v => { overlay.remove(); resolve(v); };
+    overlay.onclick = e => { if (e.target === overlay) done(null); };
+    overlay.querySelector('[data-k=no]').onclick = () => done(null);
+    overlay.querySelectorAll('[data-z]').forEach(b => b.onclick = () => done(+b.dataset.z));
+  });
+}
+
+/** Rozdělení stacku: oddělená část zůstává v témže kontejneru, když je místo;
+    jinak do zóny (u více zón s výběrem, bez zóny se rozdělit nedá). */
 async function invSplitStack(it) {
-  const n = parseInt(prompt(`Kolik kusů oddělit? (1–${it.qty - 1})`, '1'), 10);
-  if (!n) return false;
-  const zId = invUI.zoneOpen || (invUI.zones[0] && invUI.zones[0].id);
-  if (!zId) { invToast('Nejdřív musí DM založit zónu podlahy.'); return false; }
-  try { await api(`/api/inv/instances/${it.id}/split`, { method: 'POST', body: { qty: n, to: { t: 'zone', zId } } }); return true; }
+  const v = await promptDialog(`Kolik kusů oddělit? (1–${it.qty - 1})`, { title: 'Rozdělit stack', icon: '✂️', ok: 'Rozdělit', type: 'number', value: '1', min: 1, max: it.qty - 1 });
+  if (v === null) return false;
+  const n = parseInt(v, 10);
+  if (!n || n < 1 || n > it.qty - 1) { invToast('Neplatný počet.'); return false; }
+  const split = async to => { await api(`/api/inv/instances/${it.id}/split`, { method: 'POST', body: { qty: n, to } }); return true; };
+  // 1) volné místo v kontejneru, kde rozdělení probíhá
+  if (it.loc && it.loc.t === 'grid') {
+    const all = [...invUI.items, ...(invUI.zoneItems || [])];
+    const cont = all.find(i => i.id === it.loc.cId);
+    const spot = cont && invFindSpot(cont, all, { ...it, id: -1 });
+    if (spot) {
+      try { return await split({ t: 'grid', cId: cont.id, x: spot.x, y: spot.y }); }
+      catch { /* server nesouhlasí → zkusí se zóna */ }
+    }
+  }
+  // 2) leží-li v zóně, druhá část zůstane tam
+  if (it.loc && it.loc.t === 'zone') {
+    try { return await split({ t: 'zone', zId: it.loc.zId }); }
+    catch (e) { invToast(e.message); return false; }
+  }
+  // 3) jinam se nevejde → zóna dle výběru
+  const zId = await invPickZone('Kontejner je plný — kam s druhou částí?');
+  if (zId === null) return false;
+  try { return await split({ t: 'zone', zId }); }
   catch (e) { invToast(e.message); return false; }
 }
 
@@ -4481,10 +4629,13 @@ async function renderInventory() {
     <div class="pagehead"><h1>🎒 Inventář</h1></div>
     <p class="muted" style="margin-top:-8px">Předměty přetahujte myší nebo prstem. Během tažení otočíte token klávesou <b>R</b>; kliknutím otevřete detail. Kliknutím na <b>📍 zónu</b> nahoře se podlaha otevře v pravém panelu — předměty pak přetahujete rovnou mezi zemí a postavou (na zem jde předmět pustit i na tlačítko zóny). Předání jinému hráči: odložte do zóny, on si vezme.</p>
     <div class="inv-tabs">
-      ${chars.map(c => `<button class="inv-tab ${invUI.tab === 'c' + c.id ? 'on' : ''}" data-tab="c${c.id}" data-drop-take="${c.id}">🎭 ${esc(c.name)}</button>`).join('')}
-      <span class="inv-tab-sep"></span>
-      ${zones.map(z => `<button class="inv-tab zone ${invUI.zoneOpen === z.id ? 'on' : ''}" data-zonebtn="${z.id}" data-drop-zone="${z.id}" title="Otevřít zónu v pravém panelu; předmět sem jde i přetáhnout">📍 ${esc(z.name)} <span class="count">${z.count}</span></button>`).join('')}
-      ${dm ? `<button class="inv-tab ghostbtn" id="invZoneAdd" title="Nová zóna podlahy">＋ zóna</button>` : ''}
+      <div class="inv-tabgrp"><span class="tabgrp-label">🎭 Postavy</span><div class="tabgrp-items">
+        ${chars.map(c => `<button class="inv-tab ${invUI.tab === 'c' + c.id ? 'on' : ''}" data-tab="c${c.id}" data-drop-take="${c.id}">${esc(c.name)}</button>`).join('')}
+      </div></div>
+      <div class="inv-tabgrp"><span class="tabgrp-label">📍 Zóny podlahy</span><div class="tabgrp-items">
+        ${zones.map(z => `<button class="inv-tab zone ${invUI.zoneOpen === z.id ? 'on' : ''}" data-zonebtn="${z.id}" data-drop-zone="${z.id}" title="Otevřít zónu v pravém panelu; předmět sem jde i přetáhnout">${esc(z.name)} <span class="count">${z.count}</span></button>`).join('')}
+        ${dm ? `<button class="inv-tab ghostbtn" id="invZoneAdd" title="Nová zóna podlahy">＋ zóna</button>` : ''}
+      </div></div>
     </div>
     <div id="invBody"><p class="muted">Načítám…</p></div>
     <details class="session-seg" style="margin-top:18px">
@@ -4502,7 +4653,7 @@ async function renderInventory() {
   });
   const za = $app.querySelector('#invZoneAdd');
   if (za) za.onclick = async () => {
-    const name = prompt('Název zóny (např. Táborák):');
+    const name = await promptDialog('', { title: 'Nová zóna podlahy', icon: '📍', ok: 'Vytvořit', placeholder: 'Název zóny (např. Táborák)' });
     if (!name || !name.trim()) return;
     try { await api(`/api/campaigns/${cid}/inv/zones`, { method: 'POST', body: { name } }); renderInventory(); }
     catch (e) { invToast(e.message); }
@@ -4536,6 +4687,8 @@ async function invDrawBody() {
     invUI.items = data.items;
     body.innerHTML = '';
     invUI.slotCaps = data.slots; // sloučené kapacity (vestavěné + vlastní) — používá i „vzít si“
+    invUI.customSlots = data.customSlots || [];
+    invUI.sysLabels = Object.fromEntries((data.systemSlots || []).map(s => [s.key, s.label]));
     const doll = document.createElement('div');
     doll.className = 'inv-doll';
     const mkSlot = (key, label, cap, custom) => {
@@ -4543,7 +4696,23 @@ async function invDrawBody() {
       // šířka i výška rostou s kapacitou — velikost slotu je vidět na první pohled
       slot.className = 'inv-slot2 cap' + Math.max(1, Math.min(4, cap));
       slot.dataset.dropSlot = key; slot.dataset.char = chId;
-      slot.innerHTML = `<span class="sl-name" title="${esc(label)}">${esc(label)}${dm ? `<a class="sl-edit" data-slotedit="${key}" title="${custom ? 'Upravit slot (název, oblast)' : 'Přesunout slot do jiné oblasti'}">✎</a>` : ''}${custom && dm ? `<a class="sl-del" data-slotdel="${key}" title="Smazat slot (musí být prázdný)">✕</a>` : ''}</span><div class="sl-body"></div>`;
+      slot.innerHTML = `<span class="sl-name" title="${esc(label)}${dm ? ' — pravé tlačítko: úpravy slotu' : ''}">${esc(label)}</span><div class="sl-body"></div>`;
+      if (dm) slot.addEventListener('contextmenu', e => {
+        if (e.target.closest('.inv-token')) return; // menu předmětu má přednost
+        e.preventDefault(); e.stopPropagation();
+        const col = (data.slotCols || {})[key] || (INV_SLOT_DEFS[key] ? 1 : 2);
+        const items = [
+          { icon: '✎', label: custom ? 'Upravit slot…' : 'Přesunout do jiné oblasti…', action: () => invNewSlotDialog(null, custom ? { key, label, col } : { key, label, col, builtin: true }) },
+          { icon: '↑', label: 'Posunout výš', action: async () => { try { await api(`/api/campaigns/${state.campaign.id}/inv/slots/${key}`, { method: 'PUT', body: { move: 'up' } }); invDrawBody(); } catch (err) { invToast(err.message); } } },
+          { icon: '↓', label: 'Posunout níž', action: async () => { try { await api(`/api/campaigns/${state.campaign.id}/inv/slots/${key}`, { method: 'PUT', body: { move: 'down' } }); invDrawBody(); } catch (err) { invToast(err.message); } } },
+        ];
+        if (custom) items.push({ icon: '✕', label: 'Smazat slot…', action: async () => {
+          if (!await confirmDialog('Smazat slot pro celou kampaň? Musí být prázdný u všech postav.', { title: 'Smazat slot', ok: 'Smazat', danger: true })) return;
+          try { await api(`/api/campaigns/${state.campaign.id}/inv/slots/${key}`, { method: 'DELETE' }); invDrawBody(); }
+          catch (err) { invToast(err.message); }
+        } });
+        openCtxMenu(e.clientX, e.clientY, items);
+      });
       const it = data.items.find(i => i.loc && i.loc.t === 'slot' && i.loc.charId === chId && i.loc.slot === key);
       if (it) { const tok = invTokenEl(it, 52, true); tok.classList.add('fit'); slot.querySelector('.sl-body').appendChild(tok); slot.classList.add('filled'); }
       return slot;
@@ -4551,7 +4720,7 @@ async function invDrawBody() {
     const custom = data.customSlots || [];
     const cols = data.slotCols || {};
     const order = data.slotOrder || [];
-    const labelOf = key => (INV_SLOT_DEFS[key] || {}).l || (custom.find(c => c.key === key) || {}).label || key;
+    const labelOf = key => (invUI.sysLabels || {})[key] || (INV_SLOT_DEFS[key] || {}).l || (custom.find(c => c.key === key) || {}).label || key;
     const isCustom = key => !INV_SLOT_DEFS[key];
     const colKeys = n => order.filter(k => (cols[k] || (INV_SLOT_DEFS[k] ? 1 : 2)) === n);
     const mkCol = (n, title) => {
@@ -4559,16 +4728,7 @@ async function invDrawBody() {
       col.className = 'inv-col2';
       col.innerHTML = `<div class="inv-group-label">${title}</div>`;
       const keys = colKeys(n);
-      keys.forEach((key, idx) => {
-        const slot = mkSlot(key, labelOf(key), 1, isCustom(key));
-        // šipky pořadí pro DM (v rámci sloupce)
-        if (dm) {
-          const name = slot.querySelector('.sl-name');
-          if (idx > 0) name.insertAdjacentHTML('beforeend', `<a class="sl-edit" data-slotmove="up:${key}" title="Posunout výš">↑</a>`);
-          if (idx < keys.length - 1) name.insertAdjacentHTML('beforeend', `<a class="sl-edit" data-slotmove="down:${key}" title="Posunout níž">↓</a>`);
-        }
-        col.appendChild(slot);
-      });
+      keys.forEach(key => col.appendChild(mkSlot(key, labelOf(key), 1, isCustom(key))));
       if (n === 2 && dm) {
         const add = document.createElement('button');
         add.className = 'inv-slot-add';
@@ -4602,34 +4762,20 @@ async function invDrawBody() {
       for (const cont of conts) {
         const box = document.createElement('div');
         box.className = 'inv-cont';
+        // úzké kontejnery (toulec, váček) smí vedle sebe; široké mřížky dostanou vlastní řádek
+        const cc = (cont.container && cont.container.cells) || [];
+        const gw = Math.max(...cc.map(c => c.x), 0) + 1, gh = Math.max(...cc.map(c => c.y), 0) + 1;
+        const px = gw * ((gh >= 4 || gw >= 6) ? 42 : 54);
+        if (px >= 250) box.classList.add('wide');
+        if (gh >= 3 && gw <= 2) box.classList.add('tall'); // toulec apod. — titulek svisle vlevo
         box.dataset.contbox = cont.id;
-        box.innerHTML = `<div class="inv-cont-title">${esc(cont.name)} <span class="muted">(${INV_SLOT_DEFS[cont.loc.slot] ? INV_SLOT_DEFS[cont.loc.slot].l : cont.loc.slot})</span></div>`;
+        box.innerHTML = `<div class="inv-cont-title">${esc(cont.name)} <span class="muted">(${esc(labelOf(cont.loc.slot))})</span></div>`;
         box.appendChild(invContGridEl(cont, data.items));
         wrap.appendChild(box);
       }
       main.appendChild(wrap);
     }
     body.appendChild(main);
-    body.querySelectorAll('[data-slotedit]').forEach(x => x.onclick = (e) => {
-      e.stopPropagation();
-      const key = x.dataset.slotedit;
-      const s = (data.customSlots || []).find(c => c.key === key);
-      const col = (data.slotCols || {})[key] || (INV_SLOT_DEFS[key] ? 1 : 2);
-      if (s) invNewSlotDialog(null, { key, label: s.label, col });
-      else invNewSlotDialog(null, { key, label: INV_SLOT_LABEL_RO(key), col, builtin: true });
-    });
-    body.querySelectorAll('[data-slotmove]').forEach(x => x.onclick = async (e) => {
-      e.stopPropagation();
-      const [dir, key] = x.dataset.slotmove.split(':');
-      try { await api(`/api/campaigns/${state.campaign.id}/inv/slots/${key}`, { method: 'PUT', body: { move: dir } }); invDrawBody(); }
-      catch (err) { invToast(err.message); }
-    });
-    body.querySelectorAll('[data-slotdel]').forEach(x => x.onclick = async (e) => {
-      e.stopPropagation();
-      if (!await confirmDialog('Smazat slot pro celou kampaň? Musí být prázdný u všech postav.', { title: 'Smazat slot', ok: 'Smazat', danger: true })) return;
-      try { await api(`/api/campaigns/${state.campaign.id}/inv/slots/${x.dataset.slotdel}`, { method: 'DELETE' }); invDrawBody(); }
-      catch (err) { invToast(err.message); }
-    });
     return;
   }
 

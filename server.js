@@ -82,12 +82,6 @@ const MASTER_PASSWORD = (() => {
 // Systémové sloty: nejdou smazat, jdou jen přesouvat mezi sloupci. Vše ostatní si DM dotvoří.
 const BODY_SLOTS = { head: 1, torso: 1, cloak: 1, back: 1, handL: 1, handR: 1 };
 const SYSTEM_SLOT_LABELS = { head: 'Hlava', torso: 'Trup', cloak: 'Plášť / toulec', back: 'Záda / batoh', handL: 'Levá ruka', handR: 'Pravá ruka' };
-// dřívější vestavěné sloty — u existujících kampaní se převedou na vlastní (mazatelné)
-const LEGACY_SLOTS = {
-  neck: 'Krk', belt: 'Opasek', gloves: 'Rukavice', wristR: 'Zápěstí (pravé)', wristL: 'Zápěstí (levé)',
-  forearm: 'Předloktí', ring1: 'Prsten 1', ring2: 'Prsten 2', ring3: 'Prsten 3', ring4: 'Prsten 4',
-  pants: 'Kalhoty', boots: 'Boty'
-};
 /** Pořadí slotů kampaně (systémové + vlastní; uložené pořadí se doplní o chybějící). */
 function slotOrderOf(camp) {
   const all = [...Object.keys(BODY_SLOTS), ...((camp && camp.customSlots) || []).map(s => s.key)];
@@ -104,11 +98,28 @@ if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 db.settings = db.settings || { appName: APP_NAME_DEFAULT }; // nastavení aplikace
 db.notes = db.notes || []; // migrace starších dat
 db.itemInstances = db.itemInstances || []; // grafický inventář: konkrétní kusy
-// migrace: dřívější vestavěné sloty existujících kampaní → vlastní sloty (nic nezmizí, jdou mazat)
+// jednorázový úklid (slotsV2): vlastní sloty se ruší, zůstává jen systémová šestice.
+// Předměty z rušených slotů se odloží do zóny, ať se neztratí.
 db.campaigns.forEach(c => {
-  c.customSlots = c.customSlots || [];
-  for (const [k, label] of Object.entries(LEGACY_SLOTS))
-    if (!c.customSlots.some(s => s.key === k)) c.customSlots.push({ key: k, label, cap: 1 });
+  if (c.slotsV2) return;
+  c.slotsV2 = true;
+  const customKeys = new Set((c.customSlots || []).map(s => s.key));
+  if (customKeys.size) {
+    let zone = db.invZones.find(z => z.campaignId === c.id);
+    const stranded = db.itemInstances.filter(i => i.campaignId === c.id && i.loc && i.loc.t === 'slot' && customKeys.has(i.loc.slot));
+    if (stranded.length && !zone) {
+      zone = { id: nextId(), campaignId: c.id, name: 'Odložené věci', createdAt: new Date().toISOString() };
+      db.invZones.push(zone);
+    }
+    stranded.forEach(i => { i.loc = { t: 'zone', zId: zone.id }; });
+    db.articles.forEach(a => {
+      if (a.campaignId === c.id && a.item && Array.isArray(a.item.slots))
+        a.item.slots = a.item.slots.filter(k => !customKeys.has(k));
+    });
+  }
+  c.customSlots = [];
+  if (c.slotCols) for (const k of Object.keys(c.slotCols)) if (customKeys.has(k)) delete c.slotCols[k];
+  if (Array.isArray(c.slotOrder)) c.slotOrder = c.slotOrder.filter(k => !customKeys.has(k));
 });
 // migrace: mřížky kontejnerů uložené před normalizací posunout k počátku
 db.articles.forEach(a => {
@@ -777,7 +788,7 @@ route('GET', '/api/admin/campaigns/:cid/export', async (req, res, params, userId
   const roomIds = new Set(db.chatRooms.filter(r => r.campaignId === cid).map(r => r.id));
   const backup = {
     format: BACKUP_FORMAT, version: 1, exportedAt: new Date().toISOString(),
-    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [], slotCols: camp.slotCols || {}, slotOrder: camp.slotOrder || [] },
+    campaign: { name: camp.name, categories: camp.categories, commonLangId: camp.commonLangId, description: camp.description || '', iconImageId: camp.iconImageId || null, homeArticleId: camp.homeArticleId || null, customSlots: camp.customSlots || [], slotCols: camp.slotCols || {}, slotOrder: camp.slotOrder || [], slotNames: camp.slotNames || {} },
     users: [...new Set(db.memberships.filter(m => m.campaignId === cid).map(m => m.userId))]
       .map(uid => { const u = db.users.find(u => u.id === uid); return u ? { id: u.id, username: u.username } : null; }).filter(Boolean),
     memberships: db.memberships.filter(m => m.campaignId === cid),
@@ -819,7 +830,7 @@ route('POST', '/api/admin/import', async (req, res) => {
   (backup.users || []).forEach(bu => { const u = db.users.find(x => x.username.toLowerCase() === String(bu.username).toLowerCase()); if (u) userMap.set(bu.id, u.id); });
   const mu = old => userMap.has(old) ? userMap.get(old) : null;
 
-  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [], slotCols: (backup.campaign && backup.campaign.slotCols) || {}, slotOrder: (backup.campaign && backup.campaign.slotOrder) || [] };
+  const camp = { id: nextId(), name: (backup.campaign && backup.campaign.name || 'Obnovená kampaň') + ' (obnova)', categories: (backup.campaign && backup.campaign.categories) || [...SYSTEM_CATEGORIES], customSlots: (backup.campaign && backup.campaign.customSlots) || [], slotCols: (backup.campaign && backup.campaign.slotCols) || {}, slotOrder: (backup.campaign && backup.campaign.slotOrder) || [], slotNames: (backup.campaign && backup.campaign.slotNames) || {}, slotsV2: true };
   db.campaigns.push(camp);
   for (const s of SYSTEM_CATEGORIES) if (!camp.categories.includes(s)) camp.categories.push(s);
 
@@ -1893,7 +1904,7 @@ route('GET', '/api/inv/char/:chId', async (req, res, params, userId, query) => {
   sendJSON(res, 200, {
     characterId: ch.id, characterName: ch.name,
     slots: slotCapsFor(camp),
-    systemSlots: Object.entries(SYSTEM_SLOT_LABELS).map(([key, label]) => ({ key, label })),
+    systemSlots: Object.entries(SYSTEM_SLOT_LABELS).map(([key, label]) => ({ key, label: (camp && camp.slotNames || {})[key] || label, baseLabel: label })),
     customSlots: (camp && camp.customSlots) || [],
     slotCols: Object.fromEntries(slotOrderOf(camp).map(k => [k, slotColOf(camp, k)])),
     slotOrder: slotOrderOf(camp),
@@ -2082,6 +2093,16 @@ route('DELETE', '/api/inv/instances/:id', async (req, res, params, userId, query
 });
 
 // ---------- vlastní sloty postavy (platí pro celou kampaň, zakládá DM)
+route('GET', '/api/campaigns/:cid/inv/slots', async (req, res, params, userId, query) => {
+  const cid = parseInt(params.cid, 10);
+  const viewer = userId && resolveViewer(userId, cid, query.viewAs);
+  if (!viewer || !viewer.realDM) return sendJSON(res, 403, { error: 'Sloty spravuje DM.' });
+  const camp = db.campaigns.find(c => c.id === cid);
+  sendJSON(res, 200, {
+    systemSlots: Object.entries(SYSTEM_SLOT_LABELS).map(([key, base]) => ({ key, baseLabel: base, label: (camp.slotNames || {})[key] || '' })),
+    customSlots: (camp.customSlots || []).map(s => ({ key: s.key, label: s.label, col: slotColOf(camp, s.key) })),
+  });
+});
 route('POST', '/api/campaigns/:cid/inv/slots', async (req, res, params, userId, query) => {
   const cid = parseInt(params.cid, 10);
   const viewer = userId && resolveViewer(userId, cid, query.viewAs);
@@ -2108,8 +2129,14 @@ route('PUT', '/api/campaigns/:cid/inv/slots/:key', async (req, res, params, user
   const body = await readJSONBody(req);
   const isSystem = !!BODY_SLOTS[key];
   if (!s && !isSystem) return sendJSON(res, 404, { error: 'Slot nenalezen.' });
-  if (isSystem && (body.label !== undefined || body.cap !== undefined))
-    return sendJSON(res, 400, { error: 'U systémového slotu lze měnit jen sloupec a pořadí.' });
+  if (isSystem && body.cap !== undefined)
+    return sendJSON(res, 400, { error: 'Systémový slot nemá kapacitu.' });
+  if (isSystem && body.label !== undefined) {
+    // zobrazovaný název — výchozí jméno slotu zůstává, jen se jinak ukazuje
+    const l = String(body.label).trim().slice(0, 30);
+    camp.slotNames = camp.slotNames || {};
+    if (l && l !== SYSTEM_SLOT_LABELS[key]) camp.slotNames[key] = l; else delete camp.slotNames[key];
+  }
   // sloupec (1 = levý, 2 = pravý)
   if (body.col !== undefined) {
     const col = parseInt(body.col, 10);
